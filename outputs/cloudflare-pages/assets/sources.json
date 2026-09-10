@@ -1,0 +1,92 @@
+[
+  {
+    "filename": "asphalt_01-diffuse.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/asphalt_01/asphalt_01_diff_1k.jpg",
+    "license": "CC0",
+    "provider": "Poly Haven"
+  },
+  {
+    "filename": "asphalt_01-nor_gl.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/asphalt_01/asphalt_01_nor_gl_1k.jpg",
+    "license": "CC0",
+    "provider": "Poly Haven"
+  },
+  {
+    "filename": "asphalt_01-rough.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/asphalt_01/asphalt_01_rough_1k.jpg",
+    "license": "CC0",
+    "provider": "Poly Haven"
+  },
+  {
+    "filename": "asphalt_02-diffuse.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/asphalt_02/asphalt_02_diff_1k.jpg",
+    "license": "CC0",
+    "provider": "Poly Haven"
+  },
+  {
+    "filename": "asphalt_02-nor_gl.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/asphalt_02/asphalt_02_nor_gl_1k.jpg",
+    "license": "CC0",
+    "provider": "Poly Haven"
+  },
+  {
+    "filename": "asphalt_02-rough.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/asphalt_02/asphalt_02_rough_1k.jpg",
+    "license": "CC0",
+    "provider": "Poly Haven"
+  },
+  {
+    "filename": "aerial_grass_rock-diffuse.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/aerial_grass_rock/aerial_grass_rock_diff_1k.jpg",
+    "license": "CC0",
+    "provider": "Poly Haven"
+  },
+  {
+    "filename": "bark_brown_02-diffuse.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/bark_brown_02/bark_brown_02_diff_1k.jpg",
+    "license": "CC0",
+    "provider": "Poly Haven"
+  },
+  {
+    "filename": "kloppenheim_06_puresky-hdri.hdr",
+    "source": "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/kloppenheim_06_puresky_1k.hdr",
+    "license": "CC0",
+    "provider": "Poly Haven"
+  },
+  {
+    "filename": "waternormals.jpg",
+    "source": "https://threejs.org/examples/textures/waternormals.jpg",
+    "license": "MIT",
+    "provider": "Three.js examples"
+  },
+  {
+    "filename": "island_tree_02-leaves_diff.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_02/island_tree_02_leaves_diff_1k.jpg",
+    "license": "CC0",
+    "provider": "Poly Haven"
+  },
+  {
+    "filename": "island_tree_02-leaves_alpha.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_02/island_tree_02_leaves_alpha_1k.jpg",
+    "license": "CC0",
+    "provider": "Poly Haven"
+  },
+  {
+    "filename": "island_tree_02-leaves_nor_gl.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/island_tree_02/island_tree_02_leaves_nor_gl_1k.jpg",
+    "license": "CC0",
+    "provider": "Poly Haven"
+  },
+  {
+    "filename": "concrete_wall_007-diffuse.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/concrete_wall_007/concrete_wall_007_diff_1k.jpg",
+    "license": "CC0",
+    "provider": "Poly Haven"
+  },
+  {
+    "filename": "concrete_wall_007-nor_gl.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/concrete_wall_007/concrete_wall_007_nor_gl_1k.jpg",
+    "license": "CC0",
+    "provider": "Poly Haven"
+  }
+]

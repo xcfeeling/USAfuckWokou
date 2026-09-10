@@ -1,0 +1,14 @@
+/*
+!/.gitignore
+!/.gitattributes
+!/README.md
+!/work/
+!/outputs/
+
+/work/*
+!/work/river-game/
+/work/river-game/node_modules/
+/work/river-game/*.log
+
+/outputs/*
+!/outputs/cloudflare-pages/
