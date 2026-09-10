@@ -7,7 +7,7 @@ export const CHAPTERS = Object.freeze([
   { id: 'palace', name: '皇宫大决战', missions: ['最后的决战'], sky: '#adbfc4', sun: '#ffecd6', ground: '#a8aeaa', road: '#bfc0b4', map: '#626764', spawns: [[0, 12]] }
 ]);
 
-const enemyCounts = [8, 12, 16, 17, 20, 24, 25, 28, 32, 33, 36, 40, 41, 44, 48, 40];
+const enemyCounts = [10, 14, 19, 20, 23, 28, 29, 33, 37, 38, 42, 46, 47, 51, 55, 48];
 export const CAMPAIGN = Object.freeze(CHAPTERS.flatMap((chapter, chapterIndex) => chapter.missions.map((name, stage) => {
   const level = chapterIndex * 3 + stage + 1;
   return Object.freeze({
@@ -15,8 +15,8 @@ export const CAMPAIGN = Object.freeze(CHAPTERS.flatMap((chapter, chapterIndex) =
     boss: chapter.id === 'palace' ? 'emperor' : stage === 2 ? 'boss' : null,
     total: enemyCounts[level - 1], maxAlive: Math.min(18, 4 + level),
     spawnInterval: Math.max(.48, 1.55 - level * .065), heavyChance: Math.min(.55, (level - 1) * .036),
-    healthScale: 1 + (level - 1) * .12, speedScale: 1 + (level - 1) * .052,
-    bossHealth: chapter.id === 'palace' ? 6400 : 1400 + chapterIndex * 720
+    healthScale: 1.08 + (level - 1) * .135, speedScale: 1 + (level - 1) * .052,
+    bossHealth: chapter.id === 'palace' ? 7000 : 1550 + chapterIndex * 780
   });
 })));
 

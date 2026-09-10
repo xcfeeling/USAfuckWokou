@@ -4,7 +4,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { createIcons, Camera, VolumeX, Volume2, Pause, Play, X, ArrowRight, ArrowLeft, ArrowUp, ArrowDown, RotateCcw, Sparkles, SlidersHorizontal, Dices, Check, Target, Shield, Zap, Bomb, Monitor, Trophy, RefreshCw, Send } from 'lucide';
+import { createIcons, Camera, VolumeX, Volume2, Pause, Play, X, ArrowRight, ArrowLeft, ArrowUp, ArrowDown, RotateCcw, Sparkles, SlidersHorizontal, Dices, Check, Target, Shield, Zap, Bomb, Monitor, Trophy, RefreshCw, Send, Move } from 'lucide';
 import { loadAssets } from './assets.js';
 import { HEROES, WEAPONS, ENEMY_NAMES, isBossType, createHero, createEnemy, releaseEnemy, createGun, createGrenade, createPickup, disposeModel } from './chibi.js';
 import { createBattlefield } from './battlefield.js';
@@ -17,31 +17,37 @@ import { BossCombat } from './boss-combat.js';
 import { Effects } from './effects.js';
 import { Leaderboard } from './leaderboard.js';
 import { calculateResult } from './score-rules.js';
+import { TouchJoystick } from './touch-joystick.js';
 
 const elements = new Map();
 const $ = id => { if (!elements.has(id)) elements.set(id, document.getElementById(id)); return elements.get(id); };
 const random = (min, max) => min + Math.random() * (max - min);
 const choose = list => list[Math.floor(Math.random() * list.length)];
-const icons = { Camera, VolumeX, Volume2, Pause, Play, X, ArrowRight, ArrowLeft, ArrowUp, ArrowDown, RotateCcw, Sparkles, SlidersHorizontal, Dices, Check, Target, Shield, Zap, Bomb, Monitor, Trophy, RefreshCw, Send };
+const icons = { Camera, VolumeX, Volume2, Pause, Play, X, ArrowRight, ArrowLeft, ArrowUp, ArrowDown, RotateCcw, Sparkles, SlidersHorizontal, Dices, Check, Target, Shield, Zap, Bomb, Monitor, Trophy, RefreshCw, Send, Move };
 const iconize = () => createIcons({ icons, attrs: { 'stroke-width': 1.8 } });
 const catalogs = { character: HEROES };
-let preferences = { character: 'captain', sound: false, quality: 'balanced' };
+const touchDevice = navigator.userAgentData?.mobile === true || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1 && matchMedia('(pointer: coarse)').matches;
+document.body.classList.toggle('touch-device', touchDevice);
+$('touch-joystick').hidden = !touchDevice;
+const qualityKey = touchDevice ? 'mobileQuality' : 'quality', MAX_GRENADES = 3;
+let savedPreferences = {}, preferences = { character: 'captain', sound: false, quality: touchDevice ? 'performance' : 'balanced' };
 try {
-  const saved = JSON.parse(localStorage.getItem('frontline-arena-v8') || '{}');
+  const saved = savedPreferences = JSON.parse(localStorage.getItem('frontline-arena-v8') || '{}');
   for (const [key, list] of Object.entries(catalogs)) if (list.some(item => item.id === saved[key])) preferences[key] = saved[key];
   preferences.sound = saved.sound === true;
-  if (['performance', 'balanced', 'high'].includes(saved.quality)) preferences.quality = saved.quality;
+  if (['performance', 'balanced', 'high'].includes(saved[qualityKey])) preferences.quality = saved[qualityKey];
 } catch {}
-const savePreferences = () => { try { localStorage.setItem('frontline-arena-v8', JSON.stringify(preferences)); } catch {} };
+const savePreferences = () => { try { localStorage.setItem('frontline-arena-v8', JSON.stringify({ ...savedPreferences, character: preferences.character, sound: preferences.sound, [qualityKey]: preferences.quality })); } catch {} };
 const heroInfo = () => HEROES.find(item => item.id === preferences.character);
 const weaponInfo = () => WEAPONS.find(item => item.id === state.weapon);
 const startingInventory = () => Object.fromEntries(WEAPONS.map(weapon => [weapon.id, { owned: weapon.id === 'pistol', ammo: weapon.id === 'pistol' ? -1 : 0, rank: 0 }]));
 const weaponDamage = (weapon = weaponInfo()) => weapon.damage * (1 + state.inventory[weapon.id].rank * .08);
-let renderer, camera, composer, bloom, scene, assets, battlefield, physics, effects, hero, sun, navigation, tacticalMap, bossCombat;
-let thumbnailRenderer, audioContext, selectedTab = 'character', draft, checkpoint, finale, leaderboard;
+let renderer, camera, composer, bloom, smaa, scene, assets, battlefield, physics, effects, hero, sun, navigation, tacticalMap, bossCombat;
+let thumbnailRenderer, audioContext, selectedTab = 'character', draft, checkpoint, finale, leaderboard, joystick, releaseFire;
 const enemies = [], fallen = [], pickups = [], warnings = [], grenades = [], keys = new Set(), fireInputs = new Set(), thumbnails = new Map(), soundBuffers = new Map();
 let hudTimer = 0, renderDirty = true, resolutionScale = 1, frameSample = 0, frameSum = 0;
 let combatStartedAt = null;
+const viewport = { width: 1, height: 1, span: 24 };
 const playerPosition = new THREE.Vector3(), facing = new THREE.Vector3(0, 0, 1), movement = new THREE.Vector3();
 const cameraFocus = new THREE.Vector3(0, .5, 0), cameraOffset = new THREE.Vector3(0, 23.5, 34), sunOffset = new THREE.Vector3(-16, 28, 16);
 const muzzlePosition = new THREE.Vector3(), axisY = new THREE.Vector3(0, 1, 0);
@@ -49,9 +55,9 @@ const raycaster = new THREE.Raycaster(), shotDirection = new THREE.Vector3(), ai
 const silhouette = new THREE.Group(), silhouetteParts = [], silhouetteMaterial = new THREE.MeshBasicMaterial({ color: '#87dce8', transparent: true, opacity: .22, depthTest: false, depthWrite: false });
 const state = {
   ready: false, phase: 'playing', paused: false, time: 0, previous: 0, level: 1,
-  total: 8, scheduled: 0, kills: 0, score: 0, health: 120, weapon: 'pistol', inventory: startingInventory(), grenades: 2, grenadeCooldown: 0,
+  total: CAMPAIGN[0].total, scheduled: 0, kills: 0, score: 0, health: 120, weapon: 'pistol', inventory: startingInventory(), grenades: 2, grenadeCooldown: 0,
   spawnTimer: 2.2, shotTimer: 0, recoil: 0, hurt: 0, invulnerable: 0, dash: 0, dashCooldown: 0,
-  skill: 0, skillCooldown: 0, combo: 0, comboTimer: 0, clearTimer: 0, toast: 0, ambientTimer: 0, dropPity: 0,
+  skill: 0, skillCooldown: 0, combo: 0, comboTimer: 0, clearTimer: 0, toast: 0, ambientTimer: 0, dropPity: 0, grenadeDrops: 0,
   transitioning: false, hitMarker: 0, supportUnlocked: false, combatSeconds: 0, result: null, settingsOpen: false
 };
 
@@ -66,7 +72,7 @@ function formatTime(seconds) {
   const total = Math.floor(seconds), hours = Math.floor(total / 3600);
   return `${hours ? `${hours}:` : ''}${String(Math.floor(total / 60) % 60).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
-function clearInput() { keys.clear(); fireInputs.clear(); movement.set(0, 0, 0); }
+function clearInput() { keys.clear(); fireInputs.clear(); movement.set(0, 0, 0); joystick?.reset(); releaseFire?.(); }
 function point(height = .8) { return new THREE.Vector3(playerPosition.x, height, playerPosition.z); }
 function toast(message) { $('toast').textContent = message; $('toast').classList.add('show'); state.toast = 2.2; }
 
@@ -202,14 +208,18 @@ function updateSpawning(dt) {
   }
 }
 function dropWeapon(position, forcedId) {
+  if (pickups.filter(pickup => pickup.kind === 'weapon').length >= 5) return false;
   const missing = WEAPONS.slice(1).filter(item => !state.inventory[item.id].owned);
   const weapon = forcedId ? WEAPONS.find(item => item.id === forcedId) : choose(missing.length && Math.random() < .7 ? missing : WEAPONS.slice(1)), group = createPickup(weapon.id);
   group.position.copy(position); scene.add(group); pickups.push({ group, kind: 'weapon', weapon, life: 45, phase: random(0, 6) }); effects.ring(position, weapon.color, 1.5);
+  return true;
 }
 function dropGrenade(position) {
+  if (state.grenades + pickups.filter(pickup => pickup.kind === 'grenade').length >= MAX_GRENADES) return false;
   const group = createPickup('grenade'); group.position.copy(position); scene.add(group);
   if (navigation.isOpen(position.x + .85, position.z)) group.position.x += .85;
   pickups.push({ group, kind: 'grenade', life: 45, phase: random(0, 6) }); effects.ring(position, '#b9e385', 1.5);
+  return true;
 }
 function removeEnemy(enemy, defeated = false) {
   const index = enemies.indexOf(enemy); if (index === -1) return;
@@ -237,8 +247,10 @@ function damageEnemy(enemy, damage, impact, source = 'bullet') {
   if (enemy.type === 'boss') { effects.burst(position, 'crash'); dropWeapon(position); dropGrenade(position); }
   else {
     const firstWeapon = state.level === 1 && state.kills === 2 && !state.inventory.rifle.owned;
-    if (firstWeapon || state.dropPity >= 4 || Math.random() < .32) { dropWeapon(position, firstWeapon ? 'rifle' : undefined); state.dropPity = 0; }
-    if (Math.random() < .18) dropGrenade(position);
+    if (firstWeapon || state.dropPity >= 6 || Math.random() < .22) {
+      if (dropWeapon(position, firstWeapon ? 'rifle' : undefined)) state.dropPity = 0;
+    }
+    if (state.grenadeDrops < (state.level < 7 ? 1 : 2) && Math.random() < .06 && dropGrenade(position)) state.grenadeDrops++;
   }
   removeEnemy(enemy, true); if (state.kills === state.total) clearLevel();
 }
@@ -331,7 +343,7 @@ function takeDamage(amount) {
 function unlockSupport() {
   if (state.supportUnlocked) return;
   state.supportUnlocked = true; state.invulnerable = Math.max(state.invulnerable, 8);
-  $('nuclear-support').hidden = false; toast('紧急支援已就绪 · 按 N 召唤核弹'); sound('pickup');
+  $('nuclear-support').hidden = false; toast(touchDevice ? '紧急支援已就绪' : '紧急支援已就绪 · 按 N 召唤核弹'); sound('pickup');
 }
 function summonNuclear() {
   if (!playing() || !state.supportUnlocked) return;
@@ -381,7 +393,9 @@ function activateSkill() {
 }
 function drivePlayer(dt) {
   movement.set(Number(keys.has('ArrowRight') || keys.has('KeyD')) - Number(keys.has('ArrowLeft') || keys.has('KeyA')), 0, Number(keys.has('ArrowDown') || keys.has('KeyS')) - Number(keys.has('ArrowUp') || keys.has('KeyW')));
-  if (movement.lengthSq()) { movement.normalize(); facing.copy(movement); }
+  if (movement.lengthSq()) movement.normalize();
+  else if (joystick) movement.set(joystick.x, 0, joystick.y);
+  if (movement.lengthSq()) facing.copy(movement).normalize();
   const speed = heroInfo().speed;
   physics.player.velocity.set(state.dash > 0 ? facing.x * 13 : movement.x * speed, 0, state.dash > 0 ? facing.z * 13 : movement.z * speed);
   for (const field of ['shotTimer', 'recoil', 'hurt', 'invulnerable', 'dash', 'dashCooldown', 'skill', 'skillCooldown', 'comboTimer', 'grenadeCooldown']) state[field] = Math.max(0, state[field] - dt * (field === 'recoil' ? 9 : 1));
@@ -449,7 +463,7 @@ function updateFallen(dt) {
 }
 function collectPickup(pickup) {
   let color = '#b9e385';
-  if (pickup.kind === 'grenade') { state.grenades = Math.min(6, state.grenades + 1); toast('手雷 +1'); }
+  if (pickup.kind === 'grenade') { state.grenades = Math.min(MAX_GRENADES, state.grenades + 1); toast('手雷 +1'); }
   else {
     const slot = state.inventory[pickup.weapon.id], owned = slot.owned, before = slot.ammo;
     slot.owned = true; slot.rank = Math.min(10, slot.rank + (owned ? 1 : 0)); slot.ammo = Math.min(pickup.weapon.maxAmmo, slot.ammo + pickup.weapon.ammoPickup); color = pickup.weapon.color;
@@ -461,7 +475,7 @@ function collectPickup(pickup) {
 function updatePickups(dt) {
   for (let i = pickups.length - 1; i >= 0; i--) {
     const pickup = pickups[i], distance = Math.hypot(pickup.group.position.x - playerPosition.x, pickup.group.position.z - playerPosition.z);
-    const available = pickup.kind === 'grenade' ? state.grenades < 6 : state.inventory[pickup.weapon.id].ammo < pickup.weapon.maxAmmo || state.inventory[pickup.weapon.id].rank < 10;
+    const available = pickup.kind === 'grenade' ? state.grenades < MAX_GRENADES : state.inventory[pickup.weapon.id].ammo < pickup.weapon.maxAmmo || state.inventory[pickup.weapon.id].rank < 10;
     pickup.life -= dt; pickup.group.position.y = .06 + Math.sin(state.time * 3 + pickup.phase) * .06; pickup.group.userData.gun.rotation.y += dt;
     const reachable = state.phase === 'clear' || distance < 2.2 && navigation.unobstructed(playerPosition, pickup.group.position, false);
     if (available && reachable) pickup.group.position.lerp(playerPosition, 1 - Math.exp(-dt * (state.phase === 'clear' ? 3.5 : 6)));
@@ -498,7 +512,7 @@ function startLevel(level, retry = false, spawnPoint) {
   state.level = level; state.total = mission.total; state.supportUnlocked = false;
   if (rebuild) applyBattlefield(level);
   state.health = retry || level === 1 ? heroInfo().health : Math.min(heroInfo().health, state.health + Math.round(heroInfo().health * .25));
-  state.phase = 'playing'; state.scheduled = state.kills = state.dropPity = 0; state.spawnTimer = 2.1; state.invulnerable = 1.5;
+  state.phase = 'playing'; state.scheduled = state.kills = state.dropPity = state.grenadeDrops = 0; state.spawnTimer = 2.1; state.invulnerable = 1.5;
   for (const field of ['shotTimer', 'recoil', 'hurt', 'dash', 'dashCooldown', 'skill', 'skillCooldown', 'combo', 'comboTimer', 'clearTimer', 'grenadeCooldown']) state[field] = 0;
   physics.player.position.set(position.x, .6, position.z); playerPosition.copy(position); facing.set(0, 0, 1); hero.equip(state.weapon);
   checkpoint = { loadout: structuredClone({ score: state.score, inventory: state.inventory, weapon: state.weapon, grenades: state.grenades }), position: position.clone() };
@@ -537,8 +551,9 @@ function updateHud() {
   $('level').textContent = String(state.level).padStart(2, '0'); $('kills').textContent = `${state.kills} / ${state.total}`; $('score').textContent = state.score.toLocaleString('zh-CN');
   $('battle-time').textContent = formatTime(state.combatSeconds);
   $('health-value').textContent = Math.ceil(state.health); $('health-bar').style.width = `${state.health / heroInfo().health * 100}%`; $('wave-progress').style.width = `${state.kills / state.total * 100}%`;
-  $('skill-time').textContent = Math.ceil(state.skillCooldown) || ''; $('skill').classList.toggle('cooling', state.skillCooldown > 0); $('skill').disabled = state.skillCooldown > 0 || state.phase !== 'playing';
-  $('dodge').disabled = state.dashCooldown > 0 || state.phase !== 'playing'; $('combo').classList.toggle('show', state.combo > 1); $('combo-value').textContent = state.combo;
+  $('skill-time').textContent = Math.ceil(state.skillCooldown) || ''; $('skill').classList.toggle('cooling', state.skillCooldown > 0); $('skill').disabled = state.skillCooldown > 0 || !playing();
+  $('dodge').disabled = state.dashCooldown > 0 || !playing(); $('combo').classList.toggle('show', state.combo > 1); $('combo-value').textContent = state.combo;
+  if (joystick) $('touch-joystick').classList.toggle('unavailable', !playing());
   $('grenade').disabled = !playing() || state.grenades === 0 || state.grenadeCooldown > 0;
   $('fire').disabled = !playing();
   for (const weapon of WEAPONS) { const slot = state.inventory[weapon.id]; $(`slot-${weapon.id}`).disabled = !playing() || !slot.owned || slot.ammo === 0; }
@@ -557,16 +572,16 @@ function updateHud() {
 }
 function updateAimHud() {
   aimProjection.copy(playerPosition).addScaledVector(facing, 2.5); aimProjection.y = .2; aimProjection.project(camera);
-  $('crosshair').style.transform = `translate(${(aimProjection.x * .5 + .5) * innerWidth}px,${(-aimProjection.y * .5 + .5) * innerHeight}px)`; $('crosshair').hidden = state.phase !== 'playing';
+  $('crosshair').style.transform = `translate(${(aimProjection.x * .5 + .5) * viewport.width}px,${(-aimProjection.y * .5 + .5) * viewport.height}px)`; $('crosshair').hidden = state.phase !== 'playing';
   $('crosshair').classList.toggle('hit', state.hitMarker > 0);
 }
 function followCamera(dt, snap = false) {
   const blend = snap ? 1 : 1 - Math.exp(-dt * 9);
   const target = finale ? finale.focus : playerPosition, cameraBlend = finale ? 1 - Math.exp(-dt * 1.5) : blend;
   cameraFocus.x += (target.x - cameraFocus.x) * cameraBlend; cameraFocus.z += (target.z - cameraFocus.z) * cameraBlend;
-  const zoom = finale ? Math.min(.78, 24 / Math.max(32, finale.extent.z * .8 + 20, finale.extent.x / (innerWidth / innerHeight) + 14)) : 1;
+  const zoom = finale ? Math.min(.78, viewport.span / Math.max(32, finale.extent.z * .8 + 20, finale.extent.x / (viewport.width / viewport.height) + 14)) : 1;
   if (Math.abs(camera.zoom - zoom) > .0001) { camera.zoom += (zoom - camera.zoom) * (snap ? 1 : 1 - Math.exp(-dt * 1.5)); camera.updateProjectionMatrix(); }
-  effects.material.uniforms.height.value = innerHeight * renderer.getPixelRatio() / 24 * camera.zoom;
+  effects.material.uniforms.height.value = viewport.height * renderer.getPixelRatio() / viewport.span * camera.zoom;
   camera.position.copy(cameraFocus).add(cameraOffset); camera.lookAt(cameraFocus); camera.updateMatrixWorld();
   sun.target.position.set(cameraFocus.x, 0, cameraFocus.z); sun.position.copy(sun.target.position).add(sunOffset); sun.target.updateMatrixWorld();
   const center = point(.85), distance = camera.position.distanceTo(center);
@@ -575,14 +590,20 @@ function followCamera(dt, snap = false) {
   if (silhouette.visible) { hero.group.updateMatrixWorld(true); for (const [source, copy] of silhouetteParts) copy.matrix.copy(source.matrixWorld); }
 }
 function resize() {
-  const quality = { performance: { pixels: 1450000, ratio: 1, shadow: 1024 }, balanced: { pixels: 2300000, ratio: 1.25, shadow: 2048 }, high: { pixels: 4000000, ratio: 1.5, shadow: 2048 } }[preferences.quality];
-  const ratio = Math.min(devicePixelRatio || 1, quality.ratio, Math.sqrt(quality.pixels / (innerWidth * innerHeight))) * resolutionScale;
-  renderer.setPixelRatio(ratio); renderer.setSize(innerWidth, innerHeight, false); composer.setPixelRatio(ratio); composer.setSize(innerWidth, innerHeight);
+  if (touchDevice) $('game').style.height = `${Math.round(window.visualViewport?.height || innerHeight)}px`;
+  const width = viewport.width = Math.max(1, $('game').clientWidth), screenHeight = viewport.height = Math.max(1, $('game').clientHeight);
+  const presets = touchDevice
+    ? { performance: { pixels: 850000, ratio: 1.25, shadow: 512 }, balanced: { pixels: 1250000, ratio: 1.5, shadow: 1024 }, high: { pixels: 1800000, ratio: 1.75, shadow: 1024 } }
+    : { performance: { pixels: 1450000, ratio: 1, shadow: 1024 }, balanced: { pixels: 2300000, ratio: 1.25, shadow: 2048 }, high: { pixels: 4000000, ratio: 1.5, shadow: 2048 } };
+  const quality = presets[preferences.quality];
+  const ratio = Math.min(devicePixelRatio || 1, quality.ratio, Math.sqrt(quality.pixels / (width * screenHeight))) * resolutionScale;
+  renderer.setPixelRatio(ratio); renderer.setSize(width, screenHeight, false); composer.setPixelRatio(ratio); composer.setSize(width, screenHeight);
   bloom.enabled = preferences.quality !== 'performance';
+  smaa.enabled = !touchDevice || preferences.quality !== 'performance';
   if (sun.shadow.mapSize.x !== quality.shadow) { sun.shadow.mapSize.setScalar(quality.shadow); sun.shadow.map?.dispose(); sun.shadow.map = null; }
-  const aspect = innerWidth / innerHeight, height = 24;
+  const aspect = width / screenHeight, height = viewport.span = touchDevice ? Math.max(24, 21 / aspect) : 24;
   camera.left = -height * aspect / 2; camera.right = height * aspect / 2; camera.top = height / 2; camera.bottom = -height / 2; camera.updateProjectionMatrix();
-  effects.material.uniforms.height.value = innerHeight * renderer.getPixelRatio() / height;
+  effects.material.uniforms.height.value = screenHeight * renderer.getPixelRatio() / height;
   renderDirty = true;
 }
 function frame(timestamp) {
@@ -613,7 +634,7 @@ function frame(timestamp) {
     updateFallen(dt);
     state.ambientTimer -= dt;
     if (state.ambientTimer <= 0) {
-      state.ambientTimer = .17;
+      state.ambientTimer = touchDevice ? .28 : .17;
       const ambientFocus = finale ? cameraFocus : playerPosition, ambientRange = 32 / camera.zoom;
       for (const fire of battlefield.fires) if (fire.distanceToSquared(ambientFocus) < ambientRange * ambientRange) { effects.flame(fire,.48,.33); effects.emit(fire, 2, '#f7b35d', { speed: .35, up: 2, gravity: -1, life: .65, size: .09 }); effects.smoke(fire, 1, '#85867b', .65); }
     }
@@ -659,14 +680,28 @@ function chooseTab(button) {
   document.querySelectorAll('[data-tab]').forEach(tab => { tab.setAttribute('aria-selected', String(tab === button)); tab.tabIndex = tab === button ? 0 : -1; }); renderChoices();
 }
 function bindHold(button, start, stop) {
-  button.addEventListener('pointerdown', event => { if (event.button !== 0) return; event.preventDefault(); button.setPointerCapture(event.pointerId); start(); });
-  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) button.addEventListener(type, stop);
+  let pointerId = null;
+  const release = () => {
+    const previous = pointerId; pointerId = null; stop();
+    if (previous !== null && button.hasPointerCapture(previous)) button.releasePointerCapture(previous);
+  };
+  button.addEventListener('pointerdown', event => {
+    if (event.button !== 0 || pointerId !== null || button.disabled) return;
+    event.preventDefault(); pointerId = event.pointerId; button.setPointerCapture(pointerId); start();
+  });
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) button.addEventListener(type, event => { if (event.pointerId === pointerId) release(); });
+  return release;
 }
 function bind() {
   leaderboard = new Leaderboard($('leaderboard'));
   const route = document.querySelector('.campaign-route');
   CHAPTERS.forEach((chapter, index) => { const item = document.createElement('li'), name = document.createElement('span'), range = document.createElement('small'); name.textContent = chapter.name; range.textContent = index === 5 ? '16' : `${index * 3 + 1} - ${index * 3 + 3}`; item.append(name, range); route.appendChild(item); });
-  bindHold($('fire'), () => { if (playing()) { fireInputs.add('touch'); fire(); } }, () => fireInputs.delete('touch'));
+  releaseFire = bindHold($('fire'), () => { if (playing()) { fireInputs.add('touch'); fire(); } }, () => fireInputs.delete('touch'));
+  if (touchDevice) {
+    joystick = new TouchJoystick($('touch-joystick'), playing);
+    $('game').setAttribute('aria-label', '老美大战倭寇。左下摇杆控制移动与朝向，按住右下射击按钮连射，点击武器栏切换武器，点击手雷、闪避和技能按钮使用道具与能力。');
+    document.querySelector('.combat-controls').addEventListener('contextmenu', event => event.preventDefault());
+  }
   $('skill').addEventListener('click', activateSkill); $('dodge').addEventListener('click', dodge);
   $('grenade').addEventListener('click', throwGrenade);
   $('summon-nuclear').addEventListener('click', summonNuclear);
@@ -706,7 +741,13 @@ function bind() {
   $('view').addEventListener('contextmenu', event => event.preventDefault());
   window.addEventListener('blur', () => { clearInput(); if (state.ready && !['gameover', 'victory'].includes(state.phase) && !$('garage').open) setPause(true); });
   document.addEventListener('visibilitychange', () => { if (document.hidden) { clearInput(); if (state.ready && !['gameover', 'victory'].includes(state.phase)) setPause(true); } });
-  window.addEventListener('resize', resize);
+  let resizeFrame = 0;
+  const handleResize = () => {
+    clearInput();
+    if (!resizeFrame) resizeFrame = requestAnimationFrame(() => { resizeFrame = 0; resize(); });
+  };
+  window.addEventListener('resize', handleResize);
+  if (touchDevice) window.visualViewport?.addEventListener('resize', handleResize);
 }
 async function initialize() {
   iconize(); renderer = new THREE.WebGLRenderer({ canvas: $('view'), antialias: false, powerPreference: 'high-performance' });
@@ -719,8 +760,8 @@ async function initialize() {
   Object.assign(sun.shadow.camera, { left: -27, right: 27, top: 27, bottom: -27, near: 1, far: 90 }); scene.add(sun, sun.target, new THREE.HemisphereLight('#dff0ff', '#777b65', 1.2));
   const rim = new THREE.DirectionalLight('#bfdcd9', 1.1); rim.position.set(8, 8, -12); scene.add(rim);
   composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera));
-  bloom = new UnrealBloomPass(new THREE.Vector2(900, 600), .28, .45, 1.25); composer.addPass(bloom); composer.addPass(new OutputPass()); composer.addPass(new SMAAPass());
-  effects = new Effects(scene, camera); resize(); physics = new CombatPhysics(); bossCombat = new BossCombat(scene, effects); tacticalMap = new TacticalMap($('tactical-map'), $('district-name'), $('map-position'));
+  bloom = new UnrealBloomPass(new THREE.Vector2(900, 600), .28, .45, 1.25); composer.addPass(bloom); composer.addPass(new OutputPass()); smaa = new SMAAPass(); composer.addPass(smaa);
+  effects = new Effects(scene, camera, touchDevice ? .6 : 1); resize(); physics = new CombatPhysics(); bossCombat = new BossCombat(scene, effects); tacticalMap = new TacticalMap($('tactical-map'), $('district-name'), $('map-position'));
   for (const item of HEROES) thumbnail('character', item.id);
   bind(); state.ready = true; await deploy(); $('load-progress').value = 100;
   requestAnimationFrame(frame);

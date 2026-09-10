@@ -7,6 +7,7 @@
   <title>老美大战倭寇</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./mobile.css">
 </head>
 <body data-scene="beach">
   <main id="game" aria-label="老美大战倭寇。方向键或 WASD 移动，空格射击，数字 1 至 4 切换武器，G 投掷手雷，E 英雄技能，Shift 闪避，最终战支援就绪时按 N 召唤核弹。">
@@ -19,7 +20,7 @@
       <div class="identity"><h1>老美大战倭寇</h1><p id="place">海边登陆 / 抢滩先锋</p></div>
       <section class="battle-hud" aria-label="关卡进度">
         <div class="mission-number"><small>关卡 / 16</small><strong id="level">01</strong></div>
-        <div class="mission-progress"><div><span>敌军击破</span><strong id="kills">0 / 8</strong></div><div class="wave-track"><span id="wave-progress"></span></div></div>
+        <div class="mission-progress"><div><span>敌军击破</span><strong id="kills">0 / 10</strong></div><div class="wave-track"><span id="wave-progress"></span></div></div>
         <div class="score"><small>战绩</small><strong id="score">0</strong></div>
         <div class="battle-time"><small>战斗用时</small><strong id="battle-time">00:00</strong></div>
       </section>
@@ -44,7 +45,7 @@
       <div class="map-location"><span>120 × 100</span><output id="map-position" aria-label="当前位置">0 : 0</output></div>
     </aside>
     <aside class="boss-panel" id="boss-panel" aria-label="首领状态" hidden>
-      <div><strong id="boss-name">鬼子头目</strong><span id="boss-phase">逼近</span><output id="boss-health">1400 / 1400</output></div>
+      <div><strong id="boss-name">鬼子头目</strong><span id="boss-phase">逼近</span><output id="boss-health">1550 / 1550</output></div>
       <div class="boss-track"><span id="boss-health-bar"></span></div>
     </aside>
     <div class="toast" id="toast" role="status"></div>
@@ -58,6 +59,11 @@
       <div class="combat-controls"><button class="tool grenade" id="grenade" aria-label="投掷手雷" data-tooltip="投掷手雷"><i data-lucide="bomb"></i><span id="grenade-count">2</span></button><button class="tool" id="dodge" aria-label="闪避" data-tooltip="闪避"><i data-lucide="zap"></i></button><button class="fire" id="fire" aria-label="射击" data-tooltip="射击"><i data-lucide="target"></i></button><button class="tool skill" id="skill" aria-label="守护护盾" data-tooltip="守护护盾"><i data-lucide="sparkles"></i><span id="skill-time"></span></button></div>
       <div class="weapon-readout"><span>FIELD OPERATIONS</span><strong id="weapon-name-bottom">弹药 ∞</strong></div>
     </footer>
+    <div class="touch-joystick" id="touch-joystick" role="group" aria-label="移动摇杆" hidden>
+      <span class="joystick-axis joystick-axis-x" aria-hidden="true"></span>
+      <span class="joystick-axis joystick-axis-y" aria-hidden="true"></span>
+      <span class="joystick-thumb" aria-hidden="true"><i data-lucide="move"></i></span>
+    </div>
     <nav class="inventory" aria-label="武器背包">
       <button class="weapon-slot" id="slot-pistol" aria-label="制式手枪" aria-pressed="true" data-tooltip="制式手枪"><span class="slot-index">1</span><span class="slot-rank"></span><img alt="" width="72" height="36"><span class="slot-name">制式手枪</span><strong class="slot-ammo">∞</strong></button>
       <button class="weapon-slot empty" id="slot-rifle" aria-label="突击步枪" aria-pressed="false" data-tooltip="突击步枪" disabled><span class="slot-index">2</span><span class="slot-rank"></span><img alt="" width="72" height="36"><span class="slot-name">突击步枪</span><strong class="slot-ammo">--</strong></button>

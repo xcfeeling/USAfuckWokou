@@ -17,8 +17,9 @@ function sprite(smoke=false){
 }
 
 export class Effects{
-  constructor(scene,camera){
-    this.scene=scene;this.camera=camera;this.particles=[];this.smokes=[];this.rings=[];this.lights=[];this.arcs=[];this.fragments=[];this.max=1400;
+  constructor(scene,camera,density=1){
+    this.scene=scene;this.camera=camera;this.particles=[];this.smokes=[];this.rings=[];this.lights=[];this.arcs=[];this.fragments=[];this.density=density;this.max=Math.round(1400*density);
+    this.smokeLimit=Math.round(140*density);this.flameLimit=Math.round(64*density);this.debrisLimit=Math.round(120*density);this.casingLimit=Math.round(160*density);
     this.freeParticles=Array.from({length:this.max},()=>({}));this.emitColor=new THREE.Color();
     this.geometry=new THREE.BufferGeometry();
     this.positions=new Float32Array(this.max*3);this.colors=new Float32Array(this.max*3);this.sizes=new Float32Array(this.max);
@@ -33,26 +34,26 @@ export class Effects{
     this.geometry.setDrawRange(0,0);
     this.points=new THREE.Points(this.geometry,this.material);this.points.frustumCulled=false;scene.add(this.points);
     const smokeGeometry=new THREE.PlaneGeometry(1,1);
-    smokeGeometry.setAttribute('aOpacity',new THREE.InstancedBufferAttribute(new Float32Array(140),1));
-    smokeGeometry.setAttribute('aTint',new THREE.InstancedBufferAttribute(new Float32Array(420),3));
+    smokeGeometry.setAttribute('aOpacity',new THREE.InstancedBufferAttribute(new Float32Array(this.smokeLimit),1));
+    smokeGeometry.setAttribute('aTint',new THREE.InstancedBufferAttribute(new Float32Array(this.smokeLimit*3),3));
     this.smokeMaterial=new THREE.ShaderMaterial({uniforms:{map:{value:sprite(true)}},transparent:true,depthWrite:false,side:THREE.DoubleSide,
       vertexShader:'attribute float aOpacity;attribute vec3 aTint;varying float vOpacity;varying vec3 vTint;varying vec2 vUv;void main(){vOpacity=aOpacity;vTint=aTint;vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*instanceMatrix*vec4(position,1.);}',
       fragmentShader:'uniform sampler2D map;varying float vOpacity;varying vec3 vTint;varying vec2 vUv;void main(){vec4 t=texture2D(map,vUv);gl_FragColor=vec4(vTint*t.rgb,t.a*vOpacity);}'
     });
-    this.smokeMesh=new THREE.InstancedMesh(smokeGeometry,this.smokeMaterial,140);this.smokeMesh.frustumCulled=false;this.smokeMesh.count=0;scene.add(this.smokeMesh);
-    const flameGeometry=new THREE.PlaneGeometry(1,1);flameGeometry.setAttribute('aHeat',new THREE.InstancedBufferAttribute(new Float32Array(64),1).setUsage(THREE.DynamicDrawUsage));
+    this.smokeMesh=new THREE.InstancedMesh(smokeGeometry,this.smokeMaterial,this.smokeLimit);this.smokeMesh.frustumCulled=false;this.smokeMesh.count=0;scene.add(this.smokeMesh);
+    const flameGeometry=new THREE.PlaneGeometry(1,1);flameGeometry.setAttribute('aHeat',new THREE.InstancedBufferAttribute(new Float32Array(this.flameLimit),1).setUsage(THREE.DynamicDrawUsage));
     const flameMaterial=new THREE.ShaderMaterial({uniforms:{map:{value:this.smokeMaterial.uniforms.map.value}},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
       vertexShader:'attribute float aHeat;varying float vHeat;varying vec2 vUv;void main(){vHeat=aHeat;vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*instanceMatrix*vec4(position,1.);}',
       fragmentShader:'uniform sampler2D map;varying float vHeat;varying vec2 vUv;void main(){float cloud=texture2D(map,vUv).a;float core=smoothstep(.18,.8,cloud)*(1.-vUv.y*.4);vec3 fire=mix(vec3(2.5,.23,.012),vec3(3.2,1.5,.24),core);gl_FragColor=vec4(fire,cloud*vHeat);}'
     });
-    this.flames=[];this.flameMesh=new THREE.InstancedMesh(flameGeometry,flameMaterial,64);this.flameMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);this.flameMesh.frustumCulled=false;this.flameMesh.count=0;scene.add(this.flameMesh);
+    this.flames=[];this.flameMesh=new THREE.InstancedMesh(flameGeometry,flameMaterial,this.flameLimit);this.flameMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);this.flameMesh.frustumCulled=false;this.flameMesh.count=0;scene.add(this.flameMesh);
     this.dummy=new THREE.Object3D();
     this.shieldMaterial=new THREE.ShaderMaterial({uniforms:{strength:{value:0},tint:{value:new THREE.Color('#8de8d1')}},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.FrontSide,
       vertexShader:'varying vec3 vNormal;varying vec3 vView;void main(){vec4 p=modelViewMatrix*vec4(position,1.);vNormal=normalize(normalMatrix*normal);vView=normalize(-p.xyz);gl_Position=projectionMatrix*p;}',
       fragmentShader:'varying vec3 vNormal;varying vec3 vView;uniform float strength;uniform vec3 tint;void main(){float rim=pow(1.-abs(dot(normalize(vNormal),normalize(vView))),3.);gl_FragColor=vec4(tint*(.5+rim),rim*strength*.48);}'
     });
     this.shield=new THREE.Mesh(new THREE.SphereGeometry(1,32,20),this.shieldMaterial);this.shield.visible=false;scene.add(this.shield);
-    this.debris=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1,0),new THREE.MeshStandardMaterial({color:'#787e79',roughness:.88}),120);
+    this.debris=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1,0),new THREE.MeshStandardMaterial({color:'#787e79',roughness:.88}),this.debrisLimit);
     this.debris.frustumCulled=false;this.debris.count=0;scene.add(this.debris);
     this.debris.setColorAt(0,new THREE.Color('#ffffff'));
     // A constant light count avoids shader recompilation during gunfire.
@@ -65,11 +66,12 @@ export class Effects{
     });
     this.streakMesh=new THREE.InstancedMesh(streakGeometry,streakMaterial,128);this.streakMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);this.streakMesh.setColorAt(0,new THREE.Color());this.streakMesh.count=0;this.streakMesh.frustumCulled=false;scene.add(this.streakMesh);
     this.streaks=[];this.freeStreaks=Array.from({length:128},()=>({start:new THREE.Vector3(),end:new THREE.Vector3(),color:new THREE.Color()}));this.direction=new THREE.Vector3();this.up=new THREE.Vector3(0,1,0);
-    this.casings=[];this.casingMesh=new THREE.InstancedMesh(new THREE.CylinderGeometry(.021,.025,.085,5),new THREE.MeshStandardMaterial({color:'#c9a053',metalness:.7,roughness:.4}),160);
+    this.casings=[];this.casingMesh=new THREE.InstancedMesh(new THREE.CylinderGeometry(.021,.025,.085,5),new THREE.MeshStandardMaterial({color:'#c9a053',metalness:.7,roughness:.4}),this.casingLimit);
     this.casingMesh.count=0;this.casingMesh.frustumCulled=false;this.casingMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);scene.add(this.casingMesh);
     this.contactMesh=new THREE.InstancedMesh(new THREE.PlaneGeometry(1,1),new THREE.MeshBasicMaterial({color:'#0a1314',map:sprite(),transparent:true,opacity:.55,depthWrite:false}),24);this.contactMesh.count=0;this.contactMesh.frustumCulled=false;this.contactMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);scene.add(this.contactMesh);
   }
   emit(position,count=25,color='#bbebe0',options={}){
+    count=Math.max(1,Math.round(count*this.density));
     const c=this.emitColor.set(color).multiplyScalar(options.energy||1.6),direction=options.direction;
     for(let i=0;i<count&&this.particles.length<this.max;i++){
       const angle=Math.random()*Math.PI*2,speed=(options.speed||2)*(0.2+Math.random());
@@ -86,10 +88,11 @@ export class Effects{
     this.rings.length=this.arcs.length=0;
   }
   smoke(position,count=5,color='#aba68e',size=1){
-    for(let i=0;i<count&&this.smokes.length<140;i++)this.smokes.push({x:position.x+(Math.random()-.5)*.5,y:position.y+.1,z:position.z+(Math.random()-.5)*.6,vx:(Math.random()-.5)*.6,vy:.25+Math.random()*.8,vz:(Math.random()-.5)*.35,size:size*(.5+Math.random()),life:1.4+Math.random(),max:2.4,color:new THREE.Color(color),rotation:Math.random()*6});
+    count=Math.max(1,Math.round(count*this.density));
+    for(let i=0;i<count&&this.smokes.length<this.smokeLimit;i++)this.smokes.push({x:position.x+(Math.random()-.5)*.5,y:position.y+.1,z:position.z+(Math.random()-.5)*.6,vx:(Math.random()-.5)*.6,vy:.25+Math.random()*.8,vz:(Math.random()-.5)*.35,size:size*(.5+Math.random()),life:1.4+Math.random(),max:2.4,color:new THREE.Color(color),rotation:Math.random()*6});
   }
   flame(position,size=.65,life=.38){
-    if(this.flames.length<64)this.flames.push({x:position.x,y:position.y+size*.3,z:position.z,size,life,max:life,rotation:Math.random()*6});
+    if(this.flames.length<this.flameLimit)this.flames.push({x:position.x,y:position.y+size*.3,z:position.z,size,life,max:life,rotation:Math.random()*6});
   }
   explosion(position){
     this.debrisBurst(position,28);
@@ -138,7 +141,7 @@ export class Effects{
     this.flame(position,heavy?.28:.17,.075);
     if(heavy)this.smoke(position,2,'#aeb9b9',.27);
     this.flash(position,'#ffcc83',heavy?12:7);
-    if(this.casings.length>=160)this.casings.shift();
+    if(this.casings.length>=this.casingLimit)this.casings.shift();
     this.casings.push({x:position.x-direction.x*.42,y:position.y,z:position.z-direction.z*.42,vx:direction.z*(1.5+Math.random()),vy:2.3+Math.random(),vz:-direction.x*(1.5+Math.random()),angle:Math.random()*6,life:4});
   }
   hit(position,direction,armored=false){
@@ -167,8 +170,9 @@ export class Effects{
     this.contactMesh.count=i;this.contactMesh.instanceMatrix.needsUpdate=true;
   }
   debrisBurst(position,count=22,color='#828784'){
+    count=Math.max(1,Math.round(count*this.density));
     const tint=new THREE.Color(color);
-    for(let i=0;i<count&&this.fragments.length<120;i++){
+    for(let i=0;i<count&&this.fragments.length<this.debrisLimit;i++){
       const angle=Math.random()*Math.PI*2,speed=2+Math.random()*3.5;
       this.fragments.push({position:position.clone(),velocity:new THREE.Vector3(Math.cos(angle)*speed,2+Math.random()*5,Math.sin(angle)*speed),rotation:new THREE.Euler(Math.random()*6,Math.random()*6,0),size:.045+Math.random()*.12,life:2.5,color:tint});
     }
