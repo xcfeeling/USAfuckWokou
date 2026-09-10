@@ -6,6 +6,7 @@
 
 - `work/river-game/`：游戏源码、依赖清单及构建脚本。
 - `outputs/cloudflare-pages/`：当前版本的完整静态页面和资源。
+- [最新 Cloudflare 部署包](outputs/laomei-dazhan-wokou-cloudflare.zip?raw=true)：可直接上传的静态页面 ZIP。
 
 ## 本地运行
 
@@ -24,7 +25,9 @@ node server.mjs
 
 ## Cloudflare Pages
 
-框架预设选择 None，仓库根目录保留默认设置，构建输出目录为 `outputs/cloudflare-pages`。
+直接上传部署时，下载上面的部署包，在 Cloudflare Pages 中选择上传静态资源并上传 ZIP。入口 `index.html` 位于压缩包根目录。
+
+从 Git 仓库部署时，框架预设选择 None，仓库根目录保留默认设置，构建输出目录为 `outputs/cloudflare-pages`。
 
 仓库已包含静态构建结果，也可使用以下构建命令更新页面：
 
