@@ -9,6 +9,7 @@
 !/work/river-game/
 /work/river-game/node_modules/
 /work/river-game/*.log
+/work/river-game/.local/
 
 /outputs/*
 !/outputs/cloudflare-pages/

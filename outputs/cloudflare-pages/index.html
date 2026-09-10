@@ -67,14 +67,32 @@
     <div id="render-settings" class="render-settings" popover><label for="quality">画质</label><select id="quality"><option value="performance">流畅</option><option value="balanced" selected>均衡</option><option value="high">精细</option></select></div>
     <div class="loading" id="loading"><div><p>战役集结</p><h2>老美大战倭寇</h2><span id="loading-state">正在部署战场</span><progress id="load-progress" max="100" value="8"></progress></div></div>
     <div class="overlay-card victory" id="level-clear" hidden><i data-lucide="shield"></i><span>区域肃清</span><strong>第 <b id="level-clear-value">1</b> 关完成</strong><small id="next-level">下一关 2</small></div>
-    <div class="overlay-card game-over" id="game-over" hidden><span>第 <b id="failed-level">1</b> 关</span><strong>暂时失守</strong><small>本次战绩 <b id="game-over-score">0</b></small><button class="depart" id="restart"><i data-lucide="rotate-ccw"></i>重试本关</button><button class="text-button" id="new-run">重新开始</button></div>
+    <section class="campaign-victory game-over" id="game-over" role="dialog" aria-modal="true" aria-labelledby="defeat-title" hidden>
+      <div class="defeat-content">
+        <span>第 <b id="failed-level">1</b> 关</span><h2 id="defeat-title">暂时失守</h2>
+        <dl class="defeat-stats"><div><dt>本次战绩</dt><dd id="game-over-score">0</dd></div><div><dt>战斗用时</dt><dd id="game-over-time">00:00</dd></div></dl>
+        <div id="defeat-leaderboard"></div>
+        <div class="result-actions"><button class="depart" id="restart"><i data-lucide="rotate-ccw"></i>重试本关</button><button class="text-button" id="new-run">重新开始</button></div>
+      </div>
+    </section>
     <section class="campaign-victory" id="campaign-victory" role="dialog" aria-modal="true" aria-labelledby="victory-title" hidden>
       <div class="victory-content">
         <span>战役完成 / 16 关</span><h2 id="victory-title">胜利</h2><p id="victory-result">皇宫已化为废墟</p>
         <img class="victory-image" src="./assets/victory.webp" alt="战争结束后的受降仪式" width="880" height="310" decoding="async">
         <dl class="victory-stats"><div><dt>基础战绩</dt><dd id="victory-base">0</dd></div><div><dt>战斗用时</dt><dd id="victory-time">00:00</dd></div><div><dt>时间奖励</dt><dd id="victory-bonus">+0</dd></div><div class="victory-total"><dt>最终得分</dt><dd id="victory-score">0</dd></div></dl>
+        <div id="victory-leaderboard"></div>
         <button class="depart" id="campaign-restart"><i data-lucide="rotate-ccw"></i>重启战役</button>
       </div>
+    </section>
+    <section class="leaderboard" id="leaderboard" aria-labelledby="leaderboard-title" hidden>
+      <header class="leaderboard-header"><h2 id="leaderboard-title"><i data-lucide="trophy"></i>抗日榜单</h2><div><span>前 50 名</span><button class="leaderboard-refresh tool" type="button" aria-label="刷新榜单" data-tooltip="刷新榜单"><i data-lucide="refresh-cw"></i></button></div></header>
+      <form class="leaderboard-form">
+        <label for="player-nickname">抗日英雄</label><input id="player-nickname" name="nickname" placeholder="玩家昵称" autocomplete="nickname" maxlength="32" required>
+        <button class="depart leaderboard-submit" type="submit"><i data-lucide="send"></i><span>提交战绩</span></button>
+      </form>
+      <p class="leaderboard-message" role="status" aria-live="polite"></p>
+      <ol class="leaderboard-list" aria-label="抗日英雄得分排名" tabindex="0"></ol>
+      <p class="leaderboard-personal" hidden></p>
     </section>
     <div id="pause-screen" class="pause-screen" hidden><span>战术暂停</span><button id="resume"><i data-lucide="play"></i>继续战斗</button></div>
     <dialog id="garage" aria-labelledby="garage-title">

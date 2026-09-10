@@ -6,6 +6,9 @@ await mkdir(output, { recursive: true });
 await mkdir(resolve(output, 'assets'), { recursive: true });
 await copyFile('public/victory.webp', resolve(output, 'assets/victory.webp'));
 await build({ entryPoints: ['src/main.js'], bundle: true, minify: true, format: 'esm', target: 'es2022', charset: 'utf8', outfile: resolve(output, 'app.js'), legalComments: 'eof' });
+await build({ entryPoints: ['server/worker.js'], bundle: true, minify: true, format: 'esm', platform: 'neutral', target: 'es2022', charset: 'utf8', outfile: resolve(output, '_worker.js') });
+const routes = JSON.parse(await readFile('public/_routes.json', { encoding: 'utf8' }));
+await writeFile(resolve(output, '_routes.json'), JSON.stringify(routes, null, 2) + '\n', { encoding: 'utf8' });
 for (const file of ['index.html', 'style.css']) {
   const text = new TextDecoder('utf-8', { fatal: true }).decode(await readFile(file));
   await writeFile(resolve(output, file), text, { encoding: 'utf8' });

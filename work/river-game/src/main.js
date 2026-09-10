@@ -4,7 +4,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { createIcons, Camera, VolumeX, Volume2, Pause, Play, X, ArrowRight, ArrowLeft, ArrowUp, ArrowDown, RotateCcw, Sparkles, SlidersHorizontal, Dices, Check, Target, Shield, Zap, Bomb, Monitor } from 'lucide';
+import { createIcons, Camera, VolumeX, Volume2, Pause, Play, X, ArrowRight, ArrowLeft, ArrowUp, ArrowDown, RotateCcw, Sparkles, SlidersHorizontal, Dices, Check, Target, Shield, Zap, Bomb, Monitor, Trophy, RefreshCw, Send } from 'lucide';
 import { loadAssets } from './assets.js';
 import { HEROES, WEAPONS, ENEMY_NAMES, isBossType, createHero, createEnemy, releaseEnemy, createGun, createGrenade, createPickup, disposeModel } from './chibi.js';
 import { createBattlefield } from './battlefield.js';
@@ -15,12 +15,14 @@ import { Navigation } from './navigation.js';
 import { TacticalMap } from './tactical-map.js';
 import { BossCombat } from './boss-combat.js';
 import { Effects } from './effects.js';
+import { Leaderboard } from './leaderboard.js';
+import { calculateResult } from './score-rules.js';
 
 const elements = new Map();
 const $ = id => { if (!elements.has(id)) elements.set(id, document.getElementById(id)); return elements.get(id); };
 const random = (min, max) => min + Math.random() * (max - min);
 const choose = list => list[Math.floor(Math.random() * list.length)];
-const icons = { Camera, VolumeX, Volume2, Pause, Play, X, ArrowRight, ArrowLeft, ArrowUp, ArrowDown, RotateCcw, Sparkles, SlidersHorizontal, Dices, Check, Target, Shield, Zap, Bomb, Monitor };
+const icons = { Camera, VolumeX, Volume2, Pause, Play, X, ArrowRight, ArrowLeft, ArrowUp, ArrowDown, RotateCcw, Sparkles, SlidersHorizontal, Dices, Check, Target, Shield, Zap, Bomb, Monitor, Trophy, RefreshCw, Send };
 const iconize = () => createIcons({ icons, attrs: { 'stroke-width': 1.8 } });
 const catalogs = { character: HEROES };
 let preferences = { character: 'captain', sound: false, quality: 'balanced' };
@@ -36,7 +38,7 @@ const weaponInfo = () => WEAPONS.find(item => item.id === state.weapon);
 const startingInventory = () => Object.fromEntries(WEAPONS.map(weapon => [weapon.id, { owned: weapon.id === 'pistol', ammo: weapon.id === 'pistol' ? -1 : 0, rank: 0 }]));
 const weaponDamage = (weapon = weaponInfo()) => weapon.damage * (1 + state.inventory[weapon.id].rank * .08);
 let renderer, camera, composer, bloom, scene, assets, battlefield, physics, effects, hero, sun, navigation, tacticalMap, bossCombat;
-let thumbnailRenderer, audioContext, selectedTab = 'character', draft, checkpoint, finale;
+let thumbnailRenderer, audioContext, selectedTab = 'character', draft, checkpoint, finale, leaderboard;
 const enemies = [], fallen = [], pickups = [], warnings = [], grenades = [], keys = new Set(), fireInputs = new Set(), thumbnails = new Map(), soundBuffers = new Map();
 let hudTimer = 0, renderDirty = true, resolutionScale = 1, frameSample = 0, frameSum = 0;
 let combatStartedAt = null;
@@ -320,6 +322,10 @@ function takeDamage(amount) {
   if (!state.health) {
     state.phase = 'gameover'; syncCombatClock(); clearInput(); $('game-over').hidden = false;
     $('game-over-score').textContent = state.score.toLocaleString('zh-CN'); $('failed-level').textContent = state.level;
+    state.result = calculateResult(state.score, state.combatSeconds, 'defeat');
+    $('game-over-time').textContent = formatTime(state.result.seconds);
+    document.body.classList.add('result-shown');
+    leaderboard.show({ ...state.result, level: state.level, outcome: 'defeat' }, $('defeat-leaderboard'));
   }
 }
 function unlockSupport() {
@@ -345,14 +351,14 @@ function beginFinale(emperor, nuclear) {
 function completeCampaign() {
   if (state.phase !== 'ending') return;
   state.phase = 'victory'; $('campaign-victory').hidden = false;
-  const bonus = Math.round(state.score * .6 / (1 + state.combatSeconds / 900));
-  state.result = { base: state.score, seconds: state.combatSeconds, bonus, total: state.score + bonus };
+  state.result = calculateResult(state.score, state.combatSeconds, 'victory');
   $('victory-score').textContent = state.result.total.toLocaleString('zh-CN');
   $('victory-base').textContent = state.score.toLocaleString('zh-CN');
-  $('victory-time').textContent = formatTime(state.combatSeconds);
-  $('victory-bonus').textContent = `+${bonus.toLocaleString('zh-CN')}`;
+  $('victory-time').textContent = formatTime(state.result.seconds);
+  $('victory-bonus').textContent = `+${state.result.bonus.toLocaleString('zh-CN')}`;
   $('victory-result').textContent = finale.nuclear ? '核弹命中 · 皇宫已化为废墟' : '最终首领击败 · 皇宫防线崩溃';
-  document.body.classList.add('victory-shown'); $('campaign-restart').focus({ preventScroll: true });
+  document.body.classList.add('victory-shown', 'result-shown');
+  leaderboard.show({ ...state.result, level: state.level, outcome: 'victory' }, $('victory-leaderboard'));
   sound('pickup'); updateHud();
 }
 function dodge() {
@@ -473,8 +479,9 @@ function clearLevel() {
   effects.burst(point(.3), 'success'); sound('pickup');
 }
 function clearCombat() {
+  leaderboard.hide(); state.result = null;
   finale?.dispose(); finale = null; camera.zoom = 1; camera.updateProjectionMatrix();
-  document.body.classList.remove('cinematic', 'victory-shown'); $('finale-flash').style.opacity = 0;
+  document.body.classList.remove('cinematic', 'victory-shown', 'result-shown'); $('finale-flash').style.opacity = 0;
   $('campaign-victory').hidden = $('nuclear-support').hidden = true;
   for (const grenade of [...grenades]) removeGrenade(grenade); bossCombat.clear();
   for (const enemy of [...enemies]) removeEnemy(enemy);
@@ -582,7 +589,7 @@ function frame(timestamp) {
   requestAnimationFrame(frame);
   const elapsed = state.previous ? timestamp - state.previous : 16.67, dt = Math.min(.05, elapsed / 1000); state.previous = timestamp;
   syncCombatClock(timestamp);
-  const running = active() && state.phase !== 'victory';
+  const running = active() && !['victory', 'gameover'].includes(state.phase);
   if ((!running && !renderDirty) || state.transitioning) return;
   if (running) {
     if (elapsed < 100) { frameSum += elapsed; frameSample++; }
@@ -656,6 +663,7 @@ function bindHold(button, start, stop) {
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) button.addEventListener(type, stop);
 }
 function bind() {
+  leaderboard = new Leaderboard($('leaderboard'));
   const route = document.querySelector('.campaign-route');
   CHAPTERS.forEach((chapter, index) => { const item = document.createElement('li'), name = document.createElement('span'), range = document.createElement('small'); name.textContent = chapter.name; range.textContent = index === 5 ? '16' : `${index * 3 + 1} - ${index * 3 + 3}`; item.append(name, range); route.appendChild(item); });
   bindHold($('fire'), () => { if (playing()) { fireInputs.add('touch'); fire(); } }, () => fireInputs.delete('touch'));
@@ -683,7 +691,7 @@ function bind() {
   }
   window.addEventListener('keydown', event => {
     if ($('garage').open || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
-    if (event.code === 'Escape' || event.code === 'KeyP') { if (!event.repeat && state.ready && state.phase !== 'victory') setPause(!state.paused); return; }
+    if (event.code === 'Escape' || event.code === 'KeyP') { if (!event.repeat && state.ready && !['victory', 'gameover'].includes(state.phase)) setPause(!state.paused); return; }
     if (!playing()) return;
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(event.code)) event.preventDefault();
     if (event.code === 'Space') { fireInputs.add('keyboard'); if (!event.repeat) fire(); return; }
