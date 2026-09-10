@@ -675,7 +675,7 @@ function bind() {
   $('quality').value = preferences.quality; $('quality').addEventListener('change', () => { preferences.quality = $('quality').value; resolutionScale = 1; frameSum = frameSample = 0; resize(); savePreferences(); $('render-settings').hidePopover(); $('view').focus({ preventScroll: true }); });
   const updateSound = () => { $('sound').innerHTML = `<i data-lucide="${preferences.sound ? 'volume-2' : 'volume-x'}"></i>`; $('sound').setAttribute('aria-label', preferences.sound ? '关闭声音' : '开启声音'); $('sound').dataset.tooltip = preferences.sound ? '关闭声音' : '开启声音'; iconize(); };
   updateSound(); $('sound').addEventListener('click', () => { preferences.sound = !preferences.sound; savePreferences(); updateSound(); sound('pickup'); });
-  $('photo').addEventListener('click', () => { composer.render(); const link = document.createElement('a'); link.href = renderer.domElement.toDataURL('image/png'); link.download = `frontline-${Date.now()}.png`; link.click(); toast('战场留影已保存'); });
+  $('photo').addEventListener('click', () => { composer.render(); const link = document.createElement('a'); link.href = renderer.domElement.toDataURL('image/png'); link.download = `老美大战倭寇-${Date.now()}.png`; link.click(); toast('战场留影已保存'); });
   const tabs = [...document.querySelectorAll('[data-tab]')];
   for (const tab of tabs) {
     tab.addEventListener('click', () => chooseTab(tab));

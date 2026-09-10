@@ -4,19 +4,19 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#202824">
-  <title>前线 1996 · 英雄突围</title>
+  <title>老美大战倭寇</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="./style.css">
 </head>
 <body data-scene="beach">
-  <main id="game" aria-label="前线三维射击游戏。方向键或 WASD 移动，空格射击，数字 1 至 4 切换武器，G 投掷手雷，E 英雄技能，Shift 闪避，最终战支援就绪时按 N 召唤核弹。">
+  <main id="game" aria-label="老美大战倭寇。方向键或 WASD 移动，空格射击，数字 1 至 4 切换武器，G 投掷手雷，E 英雄技能，Shift 闪避，最终战支援就绪时按 N 召唤核弹。">
     <canvas id="view" tabindex="0" aria-label="三维战场"></canvas>
     <div class="lens" aria-hidden="true"></div>
     <div class="damage-overlay" id="damage-overlay" aria-hidden="true"></div>
     <div class="finale-flash" id="finale-flash" aria-hidden="true"></div>
     <div class="crosshair" id="crosshair" aria-hidden="true"><i data-lucide="target"></i></div>
     <header class="topbar">
-      <div class="identity"><h1>前线<span>1996</span></h1><p id="place">海边登陆 / 抢滩先锋</p></div>
+      <div class="identity"><h1>老美大战倭寇</h1><p id="place">海边登陆 / 抢滩先锋</p></div>
       <section class="battle-hud" aria-label="关卡进度">
         <div class="mission-number"><small>关卡 / 16</small><strong id="level">01</strong></div>
         <div class="mission-progress"><div><span>敌军击破</span><strong id="kills">0 / 8</strong></div><div class="wave-track"><span id="wave-progress"></span></div></div>
@@ -65,7 +65,7 @@
       <button class="weapon-slot empty" id="slot-rail" aria-label="重型狙击枪" aria-pressed="false" data-tooltip="重型狙击枪" disabled><span class="slot-index">4</span><span class="slot-rank"></span><img alt="" width="72" height="36"><span class="slot-name">重型狙击枪</span><strong class="slot-ammo">--</strong></button>
     </nav>
     <div id="render-settings" class="render-settings" popover><label for="quality">画质</label><select id="quality"><option value="performance">流畅</option><option value="balanced" selected>均衡</option><option value="high">精细</option></select></div>
-    <div class="loading" id="loading"><div><p>FRONTLINE / 1996</p><h2>英雄突围</h2><span id="loading-state">正在部署战场</span><progress id="load-progress" max="100" value="8"></progress></div></div>
+    <div class="loading" id="loading"><div><p>战役集结</p><h2>老美大战倭寇</h2><span id="loading-state">正在部署战场</span><progress id="load-progress" max="100" value="8"></progress></div></div>
     <div class="overlay-card victory" id="level-clear" hidden><i data-lucide="shield"></i><span>区域肃清</span><strong>第 <b id="level-clear-value">1</b> 关完成</strong><small id="next-level">下一关 2</small></div>
     <div class="overlay-card game-over" id="game-over" hidden><span>第 <b id="failed-level">1</b> 关</span><strong>暂时失守</strong><small>本次战绩 <b id="game-over-score">0</b></small><button class="depart" id="restart"><i data-lucide="rotate-ccw"></i>重试本关</button><button class="text-button" id="new-run">重新开始</button></div>
     <section class="campaign-victory" id="campaign-victory" role="dialog" aria-modal="true" aria-labelledby="victory-title" hidden>
@@ -78,7 +78,7 @@
     </section>
     <div id="pause-screen" class="pause-screen" hidden><span>战术暂停</span><button id="resume"><i data-lucide="play"></i>继续战斗</button></div>
     <dialog id="garage" aria-labelledby="garage-title">
-      <div class="garage-header"><div><span class="small-label">FRONTLINE / LOADOUT</span><h2 id="garage-title">英雄配置</h2></div><div class="garage-tools"><button class="tool" id="randomize" aria-label="随机英雄" data-tooltip="随机英雄"><i data-lucide="dices"></i></button><button class="tool" id="garage-close" aria-label="关闭"><i data-lucide="x"></i></button></div></div>
+      <div class="garage-header"><div><span class="small-label">老美大战倭寇</span><h2 id="garage-title">英雄配置</h2></div><div class="garage-tools"><button class="tool" id="randomize" aria-label="随机英雄" data-tooltip="随机英雄"><i data-lucide="dices"></i></button><button class="tool" id="garage-close" aria-label="关闭"><i data-lucide="x"></i></button></div></div>
       <div class="garage-tabs" role="tablist" aria-label="配置类别"><button role="tab" aria-selected="true" data-tab="character" id="tab-character" aria-controls="choices">英雄</button></div>
       <div id="choices" class="choices" role="tabpanel" aria-labelledby="tab-character"></div>
       <div class="garage-footer"><span id="garage-summary">蓝盾队长 · 海边登陆</span><button class="depart" id="depart">确认英雄<i data-lucide="check"></i></button></div>

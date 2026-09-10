@@ -175,7 +175,7 @@ export function createBattlefield(type, assets) {
     jungle:['西北密林','前进营地','密林指挥所','沼泽边缘','林间空地','伏击林道','侦察入口','南侧林区','补给营地'],
     mountain:['西侧山口','高地阵地','山顶要塞','西侧石坡','山间通路','东坡防线','山谷入口','南侧隘口','运输坡道'],
     city:['西北住宅区','北部厂房','城市中枢','西街废墟','中央路口','东部街区','南侧残楼','南部街道','东南车场'],
-    fuji:['西麓树林','雪峰参道','雪峰防线','西侧营地','鸟居大道','东侧石庭','山麓入口','南部神社','前线营地'],
+    fuji:['西麓树林','雪峰参道','雪峰防线','西侧营地','鸟居大道','东侧石庭','山麓入口','南部神社','战地营地'],
     palace:['西侧御殿','皇宫正殿','东侧御殿','西侧护城河','决战庭院','东侧护城河','西侧城门','正门参道','东侧城门']
   }[type];
   for(let row=0;row<3;row++)for(let col=0;col<3;col++){
@@ -190,7 +190,7 @@ export function createBattlefield(type, assets) {
     wreck(x+11,z+8,(index%3-1)*.35);
     crate(x+7,z+6.8);crate(x+7,z+8.1);barrel(x+14,z+7,index%2===0);barrel(x-7,z-9);
     if(index%3===2)container(x-10,z+12,'#667e84');
-    const number=labelTexture(String(index+1).padStart(2,'0'),'SECTOR / 1996','#c4c9ae','#47554d');ownedMaps.add(number);
+    const number=labelTexture(String(index+1).padStart(2,'0'),'作战区域','#c4c9ae','#47554d');ownedMaps.add(number);
     const marking=mesh(new THREE.PlaneGeometry(2.6,1.1),material('#ffffff',{map:number}),[x-2.2,-.024,z+4.9],root);marking.rotation.x=-Math.PI/2;marking.castShadow=false;
     if(type==='city'){
       for(const s of [-1,1])for(let i=0;i<7;i++){box(root,concrete,[.25,.13,1.18],[x+s*4.1,.005,z-9+i*1.25]);box(root,white,[.8,.012,.20],[x+s*2.3,-.025,z-2+i*.66]);}
@@ -208,7 +208,7 @@ export function createBattlefield(type, assets) {
   }
   for(let i=0;i<7;i++)tube(root,mats.steel,.025,[fieldX+4,.6,rear-2+i*.42],[fieldX+4,3.3-i*.27,rear-2+i*.42]);
   tube(root,mats.steel,.035,[fieldX+4,0,rear-1],[fieldX+4,7,rear-1]);
-  const signMap=labelTexture(chapter.name,'FRONTLINE / 1996','#f5e3b3','#2e4544');ownedMaps.add(signMap);
+  const signMap=labelTexture(chapter.name,'老美大战倭寇','#f5e3b3','#2e4544');ownedMaps.add(signMap);
   const signMat=material('#ffffff',{map:signMap});mesh(new THREE.PlaneGeometry(3.3,1.24),signMat,[0,2.1,-fieldZ-2.4],root);for(const sx of [-1.4,1.4])tube(root,mats.steel,.04,[sx,0,-fieldZ-2.5],[sx,3,-fieldZ-2.5]);
   const scenery=createCampaignScenery(type,{root,assets,material,obstacle,ownedMaps,fires});
   const shadowCanvas=document.createElement('canvas');shadowCanvas.width=shadowCanvas.height=64;const shadowContext=shadowCanvas.getContext('2d');
