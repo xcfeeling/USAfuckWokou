@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { box, oval, cylinder, tube, mesh, labelTexture } from './models.js';
-import { surfaceMaps, groundWeathering } from './surfaces.js';
+import { surfaceMaps, groundWeathering, roadEdges } from './surfaces.js';
 import { CHAPTERS } from './campaign.js';
 import { createCampaignScenery } from './campaign-scenery.js';
 
@@ -18,22 +18,39 @@ export function createBattlefield(type, assets) {
   const fieldX = ARENA.x, fieldZ = ARENA.z, rear = -fieldZ-4.6;
   function obstacle(x,z,halfX,halfZ,height,angle=0,walkOnly=false){const c=Math.abs(Math.cos(angle)),s=Math.abs(Math.sin(angle));obstacles.push({x,z,halfX:halfX*c+halfZ*s,halfZ:halfX*s+halfZ*c,height,walkOnly});}
   function beveled(parent,mat,size,position,radius=.035){return mesh(Math.min(...size)<.06?new THREE.BoxGeometry(...size):new RoundedBoxGeometry(...size,1,radius),mat,position,parent);}
-  const groundMat = material(chapter.ground,{map:tiled(type==='jungle'||type==='fuji'?assets.maps.grass:assets.maps.battleRoad,38,35),normalMap:tiled(assets.maps.battleNormal,38,35),roughnessMap:tiled(assets.maps.battleRough,38,35),normalScale:new THREE.Vector2(.45,.45)});
-  for(const map of [groundMat.map,groundMat.normalMap,groundMat.roughnessMap]){map.center.set(.5,.5);map.rotation=.23;}
-  const ground=mesh(new THREE.PlaneGeometry(220,200),groundMat,[0,-.065,0],root);ground.rotation.x=-Math.PI/2;ground.castShadow=false;
-  const roadMat=material(chapter.road,{map:tiled(natural?assets.maps.battleRoad:assets.maps.road,30,1.8),normalMap:tiled(assets.maps.normal,30,1.8),roughnessMap:tiled(assets.maps.rough,30,1.8),normalScale:new THREE.Vector2(.5,.5)});
+  const grassy = type === 'jungle' || type === 'fuji';
+  const groundMap = type === 'beach' ? assets.maps.sand : grassy ? assets.maps.grass : type === 'city' ? assets.maps.battleRoad : assets.maps.stone;
+  const groundMat = material(type==='mountain'?'#a2afa5':'#e0e2da',{map:tiled(groundMap,27.5,25),vertexColors:true,roughness:.98});
+  if(grassy){groundMat.bumpMap=tiled(groundMap,27.5,25);groundMat.bumpMap.colorSpace=THREE.NoColorSpace;groundMat.bumpScale=.045;}
+  else{groundMat.normalMap=tiled(type==='beach'?assets.maps.sandNormal:type==='city'?assets.maps.battleNormal:assets.maps.stoneNormal,27.5,25);groundMat.normalScale.set(.5,.5);}
+  for(const map of [groundMat.map,groundMat.bumpMap,groundMat.normalMap,groundMat.roughnessMap].filter(Boolean)){map.center.set(.5,.5);map.rotation=.23;}
+  const groundGeometry=new THREE.PlaneGeometry(220,200,88,80),groundPositions=groundGeometry.attributes.position,groundColors=[];
+  for(let i=0;i<groundPositions.count;i++){
+    const x=groundPositions.getX(i),z=-groundPositions.getY(i);
+    let shade=.90+Math.sin(x*.12+Math.cos(z*.09)*2)*.075+Math.sin(z*.27+x*.04)*.035;
+    if(type==='beach')shade*=.79+.21*THREE.MathUtils.smoothstep(x,-53,-37);
+    groundColors.push(shade*(grassy?.97:1),shade,shade*(grassy?.97:1));
+  }
+  groundGeometry.setAttribute('color',new THREE.Float32BufferAttribute(groundColors,3));
+  const ground=mesh(groundGeometry,groundMat,[0,-.065,0],root);ground.rotation.x=-Math.PI/2;ground.castShadow=false;
+  const roadMap=type==='beach'?assets.maps.sand:natural?assets.maps.soil:assets.maps.road;
+  const roadNormal=type==='beach'?assets.maps.sandNormal:natural?assets.maps.soilNormal:assets.maps.normal;
+  const roadRepeat=natural&&type!=='beach'?40:20;
+  const roadMat=material(type==='beach'?'#bcb9aa':natural?'#b2b9be':'#bcc4c3',{map:tiled(roadMap,roadRepeat,7*roadRepeat/120),normalMap:tiled(roadNormal,roadRepeat,7*roadRepeat/120),roughnessMap:natural?null:tiled(assets.maps.rough,20,7/6),normalScale:new THREE.Vector2(.38,.38)});
+  if(natural){roadMat.alphaMap=roadEdges();ownedMaps.add(roadMat.alphaMap);roadMat.transparent=true;roadMat.depthWrite=false;}
   for(const z of [-30,0,30]){const lane=mesh(new THREE.PlaneGeometry(fieldX*2,7),roadMat,[0,-.058,z],root);lane.rotation.x=-Math.PI/2;lane.castShadow=false;}
   for(const x of [-36,0,36]){const lane=mesh(new THREE.PlaneGeometry(fieldZ*2,7),roadMat,[x,-.054,0],root);lane.rotation.set(-Math.PI/2,0,Math.PI/2);lane.castShadow=false;}
   const weatherMap=groundWeathering(36,30);weatherMap.wrapS=weatherMap.wrapT=THREE.MirroredRepeatWrapping;weatherMap.repeat.set((fieldX*2+9)/36,(fieldZ*2+8)/30);ownedMaps.add(weatherMap);
-  const weatherMat=new THREE.MeshBasicMaterial({map:weatherMap,transparent:true,depthWrite:false});ownedMaterials.add(weatherMat);
+  const weatherMat=new THREE.MeshBasicMaterial({map:weatherMap,color:'#cbd2ca',opacity:.55,transparent:true,depthWrite:false});ownedMaterials.add(weatherMat);
   const weather=mesh(new THREE.PlaneGeometry(fieldX*2+9,fieldZ*2+8),weatherMat,[0,-.047,0],root);weather.rotation.x=-Math.PI/2;weather.castShadow=false;
-  const concrete=material('#b5b2a9',{map:mats.concrete.map,normalMap:mats.concrete.normalMap,normalScale:new THREE.Vector2(.9,.9)});
-  const olive=material('#627969',{...surfaceMaps('paint'),metalness:.38,roughness:.8,bumpScale:.018});
-  const paint=material('#b3a16c'),white=material('#a3b0a7'),rust=material('#8e5844'),dark=material('#373e3e');
-  const brick=material('#a57763',{map:mats.concrete.map,normalMap:mats.concrete.normalMap}),tire=material('#242827',{...surfaceMaps('cloth'),roughness:.98,bumpScale:.025});
-  const bagMat=material('#afa68a',{...surfaceMaps('cloth'),bumpScale:.03});
+  const concrete=material('#c3c2ba',{map:mats.concrete.map,normalMap:mats.concrete.normalMap,normalScale:new THREE.Vector2(.42,.42)});
+  const olive=material('#606f60',{...surfaceMaps('paint'),metalness:.25,roughness:.8,bumpScale:.009});
+  const paint=material('#b3a16c'),white=material('#a3b0a7'),rust=material('#82604d',{...surfaceMaps('paint'),metalness:.2,bumpScale:.008}),dark=material('#373e3e');
+  const brick=material('#a57763',{map:mats.concrete.map,normalMap:mats.concrete.normalMap,normalScale:new THREE.Vector2(.38,.38)}),tire=material('#242827',{...surfaceMaps('rubber'),roughness:.96,bumpScale:.012});
+  const glass=material('#506366',{metalness:.35,roughness:.19,envMapIntensity:.85}),lampGlass=material('#c2baa1',{metalness:.15,roughness:.26});
+  const bagMat=material('#a99f87',{...surfaceMaps('cloth'),bumpScale:.012});
   const seamMat=material('#655f4d',{roughness:1}),bareSteel=material('#a1aaa9',{...surfaceMaps('metal'),metalness:.82,roughness:.43,bumpScale:.008});
-  const puddleMat=new THREE.MeshPhysicalMaterial({color:'#586864',metalness:.25,roughness:.2,envMapIntensity:.6,normalMap:assets.water,normalScale:new THREE.Vector2(.025,.025),transparent:true,opacity:.28,depthWrite:false});ownedMaterials.add(puddleMat);
+  const puddleMat=new THREE.MeshPhysicalMaterial({color:'#737b72',metalness:0,roughness:.17,envMapIntensity:.9,normalMap:assets.water,normalScale:new THREE.Vector2(.025,.025),transparent:true,opacity:.16,depthWrite:false});ownedMaterials.add(puddleMat);
   for(let i=0;i<65;i++){
     const x=Math.sin(i*9.17)*fieldX,z=Math.cos(i*3.47)*fieldZ;
     const outline=new THREE.Shape();for(let j=0;j<64;j++){const a=j/64*Math.PI*2,r=.86+Math.sin(a*3+i)*.12+Math.cos(a*5)*.07;j?outline.lineTo(Math.cos(a)*r,Math.sin(a)*r):outline.moveTo(Math.cos(a)*r,Math.sin(a)*r);}outline.closePath();
@@ -68,12 +85,20 @@ export function createBattlefield(type, assets) {
     for(const [xx,yy] of [[2.1,height-.4],[1.85,height-.9],[1.35,height-.77],[1.05,height-1.4],[.48,height-1.25],[.1,height-1.8],[-.55,height-1.5],[-.92,height-.4],[-1.35,height-.17],[-1.8,height-.45],[-2.5,height]])wallShape.lineTo(xx,yy);
     wallShape.closePath();
     for(const xx of [-1.55,.2,1.65]){const hole=new THREE.Path();hole.moveTo(xx-.46,.82);hole.lineTo(xx-.46,2.0);hole.lineTo(xx+.41,2.0);hole.lineTo(xx+.48,.82);hole.closePath();wallShape.holes.push(hole);}
-    mesh(new THREE.ExtrudeGeometry(wallShape,{depth:.3,bevelEnabled:true,bevelSize:.026,bevelThickness:.022,bevelSegments:1}),concrete,[0,0,1.7],group);
+    const wallGeometry=new THREE.ExtrudeGeometry(wallShape,{depth:.3,bevelEnabled:true,bevelSize:.026,bevelThickness:.022,bevelSegments:1});
+    const wallUV=wallGeometry.attributes.uv;
+    for(let i=0;i<wallUV.count;i++)wallUV.setXY(i,wallUV.getX(i)*.22,wallUV.getY(i)*.22);
+    mesh(wallGeometry,concrete,[0,0,1.7],group);
     box(group,brick,[.26,height-1.0,3.8],[-2.4,(height-1.0)/2,-.1]);box(group,dark,[4.8,.16,3.7],[0,2.55,-.1]);
     box(group,concrete,[4.8,.17,3.7],[0,2.66,-.1]);box(group,concrete,[.26,height-.7,.28],[2.35,(height-.7)/2,-1.7]);
     for(const xx of [-1.55,.2,1.65]){
       box(group,dark,[.9,1.12,.025],[xx,1.4,1.67]);box(group,bareSteel,[.032,1.18,.04],[xx,1.41,2.03]);box(group,bareSteel,[.94,.025,.04],[xx,1.57,2.03]);
       for(let j=0;j<3;j++)box(group,brick,[.26,.12,.033],[xx-.35+j*.29,.69,2.019]);
+      for(const s of [-1,1])beveled(group,white,[.065,1.28,.11],[xx+s*.49,1.41,2.018],.01);
+      beveled(group,concrete,[1.15,.11,.49],[xx,.80,1.98],.018);
+      box(group,white,[1.08,.065,.12],[xx,2.045,2.027]);
+      const pane=new THREE.Shape();pane.moveTo(0,0);pane.lineTo(.28,0);pane.lineTo(.28,.4);pane.lineTo(.14,.23);pane.closePath();
+      mesh(new THREE.ShapeGeometry(pane),glass,[xx-.42,1.61,2.011],group);
     }
     for(let i=0;i<9;i++){const xx=-2.35+i*.58,yy=height-1.5+Math.sin(i*1.8)*.7;tube(group,rust,.015,[xx,yy,1.82],[xx+Math.sin(i)*.1,yy+.85,1.9]);}
     for(let i=0;i<25;i++){
@@ -83,6 +108,10 @@ export function createBattlefield(type, assets) {
     tube(group,rust,.055,[-2.3,.4,2.5],[1.7,1.1,2.7]);
     for(const s of [-1,1]){box(group,concrete,[.17,height-.5,.20],[s*2.32,(height-.5)/2,1.99]);for(let i=0;i<5;i++)box(group,brick,[.44,.17,.035],[s*1.5,2.2+i*.24,2.026]);}
     box(group,white,[4.95,.10,.40],[0,.67,1.89]);
+    tube(group,dark,.058,[2.43,.26,2.05],[2.43,height-.72,2.05]);
+    tube(group,dark,.058,[2.43,.26,2.05],[2.58,.17,2.20]);
+    for(const y of [1.0,2.25])box(group,bareSteel,[.16,.055,.065],[2.43,y,2.08]);
+    for(const xx of [-1.8,-.75,.6,1.7])box(group,rust,[.034,.06,.29],[xx,2.65,1.77]);
     if(type==='city'){
       const awning=box(group,olive,[4.6,.08,1.35],[0,2.50,2.2]);awning.rotation.x=-.13;
       const shop=labelTexture('五金商行','HARDWARE / EST. 1978','#d9d3b6','#405b63');ownedMaps.add(shop);
@@ -102,17 +131,27 @@ export function createBattlefield(type, assets) {
     obstacle(x,z,1.15,2.5,2.1,angle);
     const truck=new THREE.Group();truck.position.set(x,0,z);truck.rotation.y=angle;root.add(truck);
     box(truck,dark,[1.65,.28,3.9],[0,.63,0]);beveled(truck,olive,[1.82,.57,2.12],[0,1.0,-.88]);
-    beveled(truck,olive,[1.77,1.25,1.35],[0,1.36,1.0]);box(truck,dark,[1.48,.58,.04],[0,1.64,1.69]);
-    beveled(truck,olive,[1.8,.18,1.42],[0,2.0,1.03]);beveled(truck,rust,[1.65,.35,.7],[0,1.11,1.98]);
+    beveled(truck,olive,[1.77,1.25,1.35],[0,1.36,1.0],.09);box(truck,glass,[1.48,.58,.04],[0,1.64,1.69]);
+    beveled(truck,olive,[1.8,.18,1.42],[0,2.0,1.03],.07);beveled(truck,rust,[1.65,.35,.7],[0,1.11,1.98],.075);
+    box(truck,olive,[.045,.59,.035],[0,1.64,1.719]);box(truck,dark,[.014,.009,.64],[0,1.289,1.97]);
     box(truck,dark,[1.77,.15,.14],[0,.75,2.38]);box(truck,steelMaterial,[.65,.28,.07],[0,1.0,2.35]);
     for(let i=-3;i<=3;i++)box(truck,dark,[.04,.25,.015],[i*.075,1.01,2.391]);
     for(const s of [-1,1]){tube(truck,bareSteel,.012,[s*.30,1.39,1.72],[s*.42,1.7,1.72]);tube(truck,bareSteel,.024,[s*.88,1.59,1.37],[s*1.12,1.7,1.49]);beveled(truck,dark,[.08,.22,.17],[s*1.13,1.72,1.51]);}
     for(const [a,b] of [[[.1,1.53,1.721],[.35,1.81,1.721]],[[.19,1.62,1.722],[-.16,1.83,1.722]],[[.19,1.62,1.722],[.53,1.64,1.722]]])tube(truck,bareSteel,.005,a,b,4);
     for(const s of [-1,1]){
-      box(truck,dark,[.03,.58,.75],[s*.9,1.6,1.06]);box(truck,paint,[.21,.16,.06],[s*.65,1.06,2.35]);
-      for(const zz of [-1.32,1.22]){const wheel=cylinder(truck,tire,.46,.25,[s*.92,.46,zz],.46,24);wheel.rotation.z=Math.PI/2;const hub=cylinder(truck,bareSteel,.19,.28,[s*.94,.46,zz],.19,16);hub.rotation.z=Math.PI/2;for(let i=0;i<16;i++){const a=i/16*Math.PI*2,block=box(truck,dark,[.27,.055,.15],[s*.92,.46+Math.cos(a)*.455,zz+Math.sin(a)*.455]);block.rotation.x=-a;}}
+      box(truck,glass,[.03,.58,.75],[s*.9,1.6,1.06]);beveled(truck,lampGlass,[.23,.17,.06],[s*.65,1.06,2.35],.02);
+      box(truck,olive,[.032,.58,.032],[s*.92,1.6,1.25]);box(truck,dark,[.15,.055,1.05],[s*.93,.69,1.01]);
+      for(const zz of [-1.32,1.22]){
+        const wheel=mesh(new THREE.TorusGeometry(.35,.11,8,28),tire,[s*.92,.46,zz],truck);wheel.rotation.y=Math.PI/2;
+        const hub=cylinder(truck,bareSteel,.22,.28,[s*.94,.46,zz],.22,16);hub.rotation.z=Math.PI/2;
+        cylinder(truck,dark,.09,.30,[s*.96,.46,zz],.09,12).rotation.z=Math.PI/2;
+        const fender=mesh(new THREE.TorusGeometry(.53,.065,5,18,Math.PI),olive,[s*.9,.46,zz],truck);fender.rotation.y=Math.PI/2;
+        for(let i=0;i<16;i++){const a=i/16*Math.PI*2,block=box(truck,dark,[.20,.045,.10],[s*.92,.46+Math.cos(a)*.455,zz+Math.sin(a)*.455]);block.rotation.x=-a;}
+      }
       box(truck,olive,[.07,.75,2.1],[s*.89,1.29,-.88]);
       box(truck,bareSteel,[.026,.03,.21],[s*.9,1.29,.68]);for(const zz of [.46,1.62])box(truck,dark,[.012,.88,.019],[s*.895,1.13,zz]);
+      for(const zz of [-1.65,-.9,-.2])box(truck,bareSteel,[.025,.68,.027],[s*.938,1.3,zz]);
+      for(let i=0;i<4;i++)box(truck,dark,[.016,.10,.026],[s*.83,1.12,1.77+i*.12]);
     }
     for(let i=0;i<3;i++){box(truck,dark,[.5,.45,.6],[(i%2-.5)*.7,1.29,-1.5+i*.5]);}
     const burn=new THREE.Vector3(0,1.3,2.02).applyAxisAngle(new THREE.Vector3(0,1,0),angle).add(truck.position);fires.push(burn);
@@ -130,10 +169,18 @@ export function createBattlefield(type, assets) {
     for(let z=-fieldZ+1;z<fieldZ-1;z+=2.7)tube(root,rust,.024,[x,0,z],[x,1.05,z]);
     for(const y of [.55,.9]){tube(root,mats.steel,.012,[x,y,-fieldZ+1],[x,y,fieldZ-1]);for(let z=-fieldZ+1;z<fieldZ-1;z+=.75){tube(root,bareSteel,.008,[x-.06,y-.07,z],[x+.06,y+.07,z],4);tube(root,bareSteel,.008,[x-.06,y+.07,z],[x+.06,y-.07,z],4);}}
   }
-  const canvasMat=material('#768167',{...surfaceMaps('cloth'),bumpScale:.035,roughness:1});
+  const canvasMat=material('#747b63',{...surfaceMaps('cloth'),bumpScale:.009,roughness:1,side:THREE.DoubleSide});
   function campTent(x,z){
     obstacle(x,z,2.55,1.94,2.5);
-    const tent=new THREE.Group();tent.position.set(x,0,z);root.add(tent);box(tent,canvasMat,[5,1.6,3.6],[0,.8,0]);for(const s of [-1,1]){const roof=box(tent,canvasMat,[5.1,.09,2.2],[0,1.9,s*.91]);roof.rotation.x=s*.47;for(const x of [-2.3,0,2.3])tube(tent,seamMat,.008,[x,2.4,0],[x,1.42,s*1.88]);for(const x of [-2.4,2.4]){tube(tent,seamMat,.012,[x,1.7,s*1.7],[x*1.25,.06,s*2.6]);cylinder(tent,rust,.018,.2,[x*1.25,.08,s*2.6],.018,6);}}box(tent,dark,[1.8,1.56,.05],[0,.79,1.85]);
+    const tent=new THREE.Group();tent.position.set(x,0,z);root.add(tent);box(tent,canvasMat,[5,1.6,3.6],[0,.8,0]);
+    for(const s of [-1,1]){
+      const roofGeometry=new THREE.PlaneGeometry(5.1,2.2,18,8),p=roofGeometry.attributes.position;
+      for(let i=0;i<p.count;i++){const xx=p.getX(i),t=(p.getY(i)+1.1)/2.2;p.setXYZ(i,xx,1.48+t*.94-Math.sin(t*Math.PI)*(.07+Math.cos(xx*2.7)*.02),s*1.86*(1-t));}
+      roofGeometry.computeVertexNormals();mesh(roofGeometry,canvasMat,[0,0,0],tent);
+      for(const xx of [-2.3,0,2.3])tube(tent,seamMat,.008,[xx,2.43,0],[xx,1.49,s*1.88]);
+      for(const xx of [-2.4,2.4]){tube(tent,seamMat,.012,[xx,1.7,s*1.7],[xx*1.25,.06,s*2.6]);cylinder(tent,rust,.018,.2,[xx*1.25,.08,s*2.6],.018,6);}
+    }
+    box(tent,dark,[1.8,1.56,.05],[0,.79,1.85]);
     for(const s of [-1,1]){const flap=box(tent,canvasMat,[.75,1.56,.035],[s*1.05,.79,1.89]);flap.rotation.y=s*.32;}
   }
   function watchTower(x,z){
@@ -182,6 +229,7 @@ export function createBattlefield(type, assets) {
     const x=(col-1)*36,z=(row-1)*30,index=row*3+col;
     districts.push({x,z,name:districtNames[index]});
     if(type==='palace')continue;
+    if(type==='fuji'&&(index===1||index===2))continue;
     if(natural&&index%2===0)campTent(x-11,z-10);else if(type==='depot'&&index%2===0)freightCar(x-11,z-13);else ruin(x-11,z-10,type==='city'?5.3:3.2);
     if(type==='depot'||index%3===2)container(x+10,z-10,index%2?'#9e5d49':'#607f93');
     else if(type==='city'||type==='mountain'&&index%3===0)ruin(x+11,z-10,4.6);

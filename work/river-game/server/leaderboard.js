@@ -1,4 +1,5 @@
 import { calculateResult, maximumBaseScore, normalizeNickname, validNickname } from '../src/score-rules.js';
+import { CAMPAIGN } from '../src/campaign.js';
 
 const playerIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const schemas = new WeakMap();
@@ -26,10 +27,28 @@ async function ensureSchema(db) {
         score INTEGER NOT NULL CHECK (score >= 0),
         base_score INTEGER NOT NULL CHECK (base_score >= 0),
         seconds REAL NOT NULL CHECK (seconds >= 0),
-        level INTEGER NOT NULL CHECK (level BETWEEN 1 AND 16),
+        level INTEGER NOT NULL CHECK (level BETWEEN 1 AND ${CAMPAIGN.length}),
         outcome TEXT NOT NULL CHECK (outcome IN ('defeat', 'victory')),
         created_at INTEGER NOT NULL
       )`).run();
+      await db.prepare('CREATE TABLE IF NOT EXISTS leaderboard_schema (version INTEGER PRIMARY KEY)').run();
+      const version = await db.prepare('SELECT MAX(version) AS version FROM leaderboard_schema').first();
+      if ((version?.version || 0) < 2) {
+        // D1 batches are atomic: preserve all existing scores while widening the old CHECK constraint.
+        await db.batch([
+          db.prepare(`CREATE TABLE leaderboard_scores_v2 (
+            player_id TEXT PRIMARY KEY, nickname TEXT NOT NULL,
+            score INTEGER NOT NULL CHECK (score >= 0), base_score INTEGER NOT NULL CHECK (base_score >= 0),
+            seconds REAL NOT NULL CHECK (seconds >= 0), level INTEGER NOT NULL CHECK (level BETWEEN 1 AND ${CAMPAIGN.length}),
+            outcome TEXT NOT NULL CHECK (outcome IN ('defeat', 'victory')), created_at INTEGER NOT NULL
+          )`),
+          db.prepare('INSERT INTO leaderboard_scores_v2 (player_id, nickname, score, base_score, seconds, level, outcome, created_at) SELECT player_id, nickname, score, base_score, seconds, level, outcome, created_at FROM leaderboard_scores'),
+          db.prepare('DROP TABLE leaderboard_scores'),
+          db.prepare('ALTER TABLE leaderboard_scores_v2 RENAME TO leaderboard_scores'),
+          db.prepare('CREATE INDEX leaderboard_ranking ON leaderboard_scores (score DESC, seconds ASC, created_at ASC, player_id ASC)'),
+          db.prepare('INSERT OR IGNORE INTO leaderboard_schema (version) VALUES (2)')
+        ]);
+      }
       await db.prepare('CREATE INDEX IF NOT EXISTS leaderboard_ranking ON leaderboard_scores (score DESC, seconds ASC, created_at ASC, player_id ASC)').run();
     })().catch(error => { schemas.delete(db); throw error; });
     schemas.set(db, ready);
@@ -66,7 +85,7 @@ function validateSubmission(value) {
   const nickname = normalizeNickname(value.nickname);
   if (!validNickname(nickname)) throw new RequestError(400, '昵称需为 1 至 16 个可见字符');
   const { baseScore, seconds, level, outcome } = value;
-  if (!Number.isInteger(level) || level < 1 || level > 16 || !['defeat', 'victory'].includes(outcome) || (outcome === 'victory' && level !== 16)) throw new RequestError(400, '关卡记录无效');
+  if (!Number.isInteger(level) || level < 1 || level > CAMPAIGN.length || !['defeat', 'victory'].includes(outcome) || (outcome === 'victory' && level !== CAMPAIGN.length)) throw new RequestError(400, '关卡记录无效');
   if (!Number.isSafeInteger(baseScore) || baseScore < 0 || baseScore > maximumBaseScore(level) || !Number.isFinite(seconds) || seconds < 0 || seconds > 604800 || (baseScore > 0 && seconds < 1)) throw new RequestError(400, '得分或用时记录无效');
   return { playerId: value.playerId.toLowerCase(), nickname, level, outcome, ...calculateResult(baseScore, seconds, outcome) };
 }

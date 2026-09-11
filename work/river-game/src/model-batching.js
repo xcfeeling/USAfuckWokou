@@ -12,8 +12,8 @@ export function batchModel(root) {
     for (const object of part.children) {
       if (!object.isMesh || object.material.transparent || object.userData.animated) continue;
       const source = object.material;
-      const metalness = source.metalness >= .5 ? .78 : .06;
-      const roughness = source.metalness >= .5 ? .4 : source.isMeshPhysicalMaterial ? (source.roughness >= .5 ? .65 : .4) : .88;
+      const metalness = source.metalness < .2 ? 0 : source.metalness < .6 ? .35 : .8;
+      const roughness = source.roughness < .28 ? .24 : source.roughness < .58 ? .48 : source.roughness < .8 ? .72 : .92;
       const key = [source.type, metalness, roughness, source.clearcoat, source.clearcoatRoughness, source.map?.uuid, source.normalMap?.uuid, source.bumpMap?.uuid, source.roughnessMap?.uuid, source.bumpScale, source.side].join('/');
       if (!materials.has(key)) {
         const material = source.clone();

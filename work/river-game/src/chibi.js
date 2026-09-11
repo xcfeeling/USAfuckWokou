@@ -2,10 +2,11 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { surfaceMaps } from './surfaces.js';
 import { createBossModel } from './boss-model.js';
+import { createSoldierModel } from './soldier-model.js';
 import { batchModel, shareGeometry } from './model-batching.js';
 
-export const ENEMY_NAMES = Object.freeze({ raider: '倭寇', heavy: '武士', boss: '鬼子头目', emperor: '鬼子天皇' });
-export const isBossType = type => type === 'boss' || type === 'emperor';
+export const ENEMY_NAMES = Object.freeze({ raider: '倭寇', heavy: '武士', soldier: '日本兵', boss: '鬼子头目', officer: '日本兵指挥官', emperor: '鬼子天皇' });
+export const isBossType = type => type === 'boss' || type === 'officer' || type === 'emperor';
 
 export const HEROES = [
   { id: 'captain', name: '蓝盾队长', title: '先锋', detail: '生命 120 · 守护护盾', health: 120, speed: 4.2, skill: '守护护盾', color: '#19b6e0' },
@@ -14,15 +15,15 @@ export const HEROES = [
   { id: 'panda', name: '熊猫卫士', title: '守卫', detail: '生命 140 · 震荡冲击', health: 140, speed: 3.9, skill: '震荡冲击', color: '#f2df9c' }
 ];
 export const WEAPONS = [
-  { id: 'pistol', name: '制式手枪', detail: '精准 · 单发', damage: 22, interval: .28, range: 24, pellets: 1, spread: 0, color: '#ffe3a0' },
-  { id: 'rifle', name: '突击步枪', detail: '全自动 · 连射', damage: 19, interval: .14, range: 25, pellets: 1, spread: .015, color: '#93eadc', ammoPickup: 72, maxAmmo: 216 },
-  { id: 'scatter', name: '双管霰弹枪', detail: '近战 · 五发散射', damage: 18, interval: .67, range: 11, pellets: 5, spread: .30, color: '#ffaa7d', ammoPickup: 14, maxAmmo: 42 },
-  { id: 'rail', name: '重型狙击枪', detail: '重击 · 穿透', damage: 84, interval: .87, range: 31, pellets: 1, spread: 0, pierce: 3, color: '#a8d6ff', ammoPickup: 10, maxAmmo: 30 }
+  { id: 'pistol', name: '制式手枪', detail: '精准 · 单发', damage: 20, interval: .28, range: 24, pellets: 1, spread: 0, color: '#ffe3a0' },
+  { id: 'rifle', name: '突击步枪', detail: '全自动 · 连射', damage: 17, interval: .14, range: 25, pellets: 1, spread: .015, color: '#93eadc', ammoPickup: 72, maxAmmo: 216 },
+  { id: 'scatter', name: '双管霰弹枪', detail: '近战 · 五发散射', damage: 15, interval: .67, range: 11, pellets: 5, spread: .30, color: '#ffaa7d', ammoPickup: 14, maxAmmo: 42 },
+  { id: 'rail', name: '重型狙击枪', detail: '重击 · 穿透', damage: 72, interval: .87, range: 31, pellets: 1, spread: 0, pierce: 3, color: '#a8d6ff', ammoPickup: 10, maxAmmo: 30 }
 ];
 const materialCache = new Map();
-function material(color, metalness = .25, roughness = .32) {
-  const key = `${color}-${metalness}-${roughness}`;
-  if (!materialCache.has(key)) materialCache.set(key, new THREE.MeshPhysicalMaterial({ color, metalness, roughness, clearcoat: metalness >= .25 ? .65 : .12, clearcoatRoughness: .2 }));
+function material(color, metalness = .25, roughness = .32, surface = null) {
+  const key = `${color}-${metalness}-${roughness}-${surface}`;
+  if (!materialCache.has(key)) materialCache.set(key, new THREE.MeshPhysicalMaterial({ color, ...(surface ? surfaceMaps(surface) : {}), bumpScale: surface === 'fur' ? .012 : surface === 'skin' ? .003 : .006, metalness, roughness, clearcoat: roughness < .2 ? .45 : surface === 'paint' ? .18 : .02, clearcoatRoughness: .38 }));
   return materialCache.get(key);
 }
 function fabric(color) {
@@ -30,10 +31,11 @@ function fabric(color) {
   if (!materialCache.has(key)) materialCache.set(key, new THREE.MeshStandardMaterial({ color, ...surfaceMaps('cloth'), roughness: .88, bumpScale: .008 }));
   return materialCache.get(key);
 }
-const white = material('#faf6eb', .1), black = material('#121b25', .12), skin = material('#f6c3a4', 0, .52);
-const steel = material('#80969e', .8), red = material('#bc3049', .45), gold = material('#dbad48', .65);
-const eyeMat = material('#081225', .2, .12);
-const blue = material('#087aaf', .35), darkBlue = fabric('#15518a');
+const white = material('#e2e2d7', 0, .62), black = material('#252b2a', 0, .78, 'leather'), skin = material('#d0ac94', 0, .74, 'skin');
+const steel = material('#8e999b', .84, .36, 'metal'), red = material('#a43e42', .35, .44, 'paint'), gold = material('#ba9a5c', .8, .39, 'metal');
+const whiteFur = material('#dcdcd1', 0, .95, 'fur'), blackFur = material('#292c2b', 0, .95, 'fur');
+const eyeMat = material('#151a1c', 0, .14);
+const blue = material('#38617d', .35, .45, 'paint'), darkBlue = fabric('#344c62');
 function add(parent, geometry, mat, x = 0, y = 0, z = 0) {
   const mesh = new THREE.Mesh(geometry, mat); mesh.position.set(x, y, z); mesh.castShadow = mesh.receiveShadow = true; parent.add(mesh); return mesh;
 }
@@ -72,11 +74,11 @@ export function createHero(id) {
   const group = new THREE.Group(), body = new THREE.Group(), head = new THREE.Group(), arms = new THREE.Group(), legs = [];
   group.add(body); body.add(head, arms); head.position.y = 1.56;
   const isCaptain = id === 'captain', isArmor = id === 'armor', isPanda = id === 'panda';
-  const suit = isCaptain ? darkBlue : isArmor ? red : isPanda ? fabric('#222a2a') : fabric('#4c8470');
-  const shell = isCaptain ? blue : isArmor ? red : isPanda ? white : material('#cad9c6', .3);
+  const suit = isCaptain ? darkBlue : isArmor ? red : isPanda ? blackFur : fabric('#526a58');
+  const shell = isCaptain ? blue : isArmor ? red : isPanda ? whiteFur : material('#bbc4b4', .3, .45, 'paint');
   const boots = isCaptain || isArmor ? red : black;
   oval(body, suit, [.34, .42, .25], [0, .69, 0]);
-  rounded(body, isPanda ? white : shell, [.56, .42, .20], [0, .82, .2], .1);
+  rounded(body, shell, [.56, .42, .20], [0, .82, .2], .1);
   rounded(body, black, [.61, .12, .46], [0, .44, 0], .04);
   rounded(body, gold, [.13, .13, .04], [0, .44, .255], .02);
   for (const s of [-1, 1]) {
@@ -88,11 +90,25 @@ export function createHero(id) {
     const leg = new THREE.Group(); leg.position.set(s * .19, .43, 0); group.add(leg); legs.push(leg);
     oval(leg, suit, [.14, .22, .145], [0, -.13, 0]);
     rounded(leg, boots, [.29, .24, .36], [0, -.32, .07], .085);
+    rounded(leg, black, [.29, .045, .37], [0, -.434, .075], .015);
+    if (!isPanda) rounded(leg, shell, [.19, .16, .068], [0, -.17, .145], .04);
     oval(arms, suit, [.15, .21, .145], [s * .36, .91, .10]);
+    if (!isPanda) {
+      rounded(arms, shell, [.24, .15, .25], [s * .37, 1.04, .10], .052);
+      rounded(body, steel, [.026, .085, .028], [s * .23, .96, .29], .006);
+    }
     const elbow = rounded(arms, suit, [.23, .21, .31], [s * .37, .78, .27], .09); elbow.rotation.x = -.3;
     oval(arms, boots, [.135, .135, .14], [s * .32, .78, .44]);
   }
   oval(head, shell, [.69, .68, .625], [0, 0, 0], 40);
+  if (!isPanda) {
+    const rim = add(head, new THREE.TorusGeometry(.625, .018, 5, 40, Math.PI * 1.5), black, 0, -.02, -.07);
+    rim.rotation.set(Math.PI / 2, 0, Math.PI * .25); rim.scale.y = .94;
+    for (const s of [-1, 1]) {
+      rounded(head, shell, [.085, .25, .25], [s * .626, -.19, -.02], .025);
+      oval(head, steel, [.022, .022, .01], [s * .62, -.18, .118], 12);
+    }
+  }
   if (isCaptain) {
     oval(head, skin, [.51, .265, .36], [0, -.36, .31]);
     eyes(head, blue, id); textBadge('A', head, 0, .43, .555, .30, .34);
@@ -109,12 +125,12 @@ export function createHero(id) {
     rounded(head, black, [.26, .035, .035], [0, -.40, .625], .01);
     oval(body, white, [.11, .11, .04], [0, .84, .32]);
   } else if (isPanda) {
-    for (const s of [-1, 1]) oval(head, black, [.205, .21, .15], [s * .46, .52, -.03]);
-    eyes(head, black, id); oval(head, black, [.11, .07, .06], [0, -.24, .624]);
-    oval(head, white, [.23, .12, .09], [0, -.36, .559]);
+    for (const s of [-1, 1]) oval(head, blackFur, [.205, .21, .15], [s * .46, .52, -.03]);
+    eyes(head, blackFur, id); oval(head, black, [.11, .07, .06], [0, -.24, .624]);
+    oval(head, whiteFur, [.23, .12, .09], [0, -.36, .559]);
   } else {
-    oval(head, material('#abd2ac', 0, .38), [.55, .49, .16], [0, -.03, .52]);
-    eyes(head, material('#447569', .2), id);
+    oval(head, material('#9eaf96', 0, .74, 'skin'), [.55, .49, .16], [0, -.03, .52]);
+    eyes(head, material('#4f6860', .2, .45, 'paint'), id);
     for (const s of [-1, 1]) oval(head, steel, [.08, .20, .22], [s * .625, -.01, 0]);
     rounded(head, red, [.095, .22, .06], [0, .44, .55], .023);
     rounded(body, gold, [.23, .09, .03], [0, .84, .322], .02);
@@ -147,7 +163,7 @@ export function createGun(id) {
   if (gunTemplates.has(id)) return gunTemplates.get(id).clone(true);
   const group = new THREE.Group();
   const isRifle = id === 'rifle', isShotgun = id === 'scatter', isRail = id === 'rail';
-  const finish = isRifle ? material('#687e62', .4) : isShotgun ? material('#8d503c', .25) : isRail ? material('#638b9a', .4) : steel;
+  const finish = isRifle ? material('#687e62', .4, .46, 'paint') : isShotgun ? material('#835b46', .25, .52, 'paint') : isRail ? material('#63818a', .4, .46, 'paint') : steel;
   rounded(group, finish, [.24, .22, .59], [0, .02, .24], .06);
   rounded(group, black, [.17, .26, .2], [0, -.19, .08], .035).rotation.x = -.22;
   rounded(group, black, [.19, .10, .30], [0, .17, .19], .025);
@@ -172,7 +188,7 @@ export function createGun(id) {
 const enemyMaterials = new Map();
 function enemyMaterial(color, surface = 'cloth', metalness = 0, roughness = .9) {
   const key = `${color}-${surface}-${metalness}-${roughness}`;
-  if (!enemyMaterials.has(key)) enemyMaterials.set(key, new THREE.MeshStandardMaterial({ color, ...surfaceMaps(surface), metalness, roughness, bumpScale: surface === 'cloth' ? .013 : .006 }));
+  if (!enemyMaterials.has(key)) enemyMaterials.set(key, new THREE.MeshStandardMaterial({ color, ...surfaceMaps(surface), metalness, roughness, bumpScale: surface === 'cloth' ? .009 : surface === 'skin' ? .003 : .006 }));
   return enemyMaterials.get(key);
 }
 
@@ -185,6 +201,7 @@ export function releaseEnemy(model) {
 
 export function createEnemy(type) {
   if (enemyPool.get(type)?.length) return enemyPool.get(type).pop();
+  if (type === 'soldier' || type === 'officer') return { ...createSoldierModel(type), type };
   if (isBossType(type)) return { ...createBossModel(type), type };
   if (enemyTemplates.has(type)) return enemyInstance(type);
   const group = new THREE.Group(), torso = new THREE.Group(), head = new THREE.Group(), legs = [], knees = [], swordArm = new THREE.Group(), freeArm = new THREE.Group();
@@ -194,8 +211,8 @@ export function createEnemy(type) {
   const folds = enemyMaterial(type === 'raider' ? '#393e42' : '#2a3034');
   const armor = enemyMaterial('#414a50', 'metal', .62, .59);
   const edging = enemyMaterial('#a08b57', 'metal', .66, .45), cord = enemyMaterial('#b9a48b');
-  const flesh = enemyMaterial('#c7a38b', 'cloth', 0, .86), hair = enemyMaterial('#242322', 'cloth', 0, .98);
-  const bladeMat = enemyMaterial('#c4cbd0', 'metal', .92, .29), wrap = enemyMaterial('#363b34');
+  const flesh = enemyMaterial('#c7a38b', 'skin', 0, .78), hair = enemyMaterial('#242322', 'fur', 0, .95);
+  const bladeMat = enemyMaterial('#c4cbd0', 'metal', .92, .29), wrap = enemyMaterial('#363b34', 'leather');
   const sash = enemyMaterial('#d1bf96');
   oval(torso, cloth, [.31, .42, .215], [0, 1.02, 0]);
   rounded(torso, sash, [.62, .12, .45], [0, .80, .015], .025);
@@ -305,7 +322,7 @@ function enemyInstance(type) {
 }
 
 export function createGrenade() {
-  const group = new THREE.Group(), olive = material('#526346', .4, .64), dark = material('#303b30', .55, .45);
+  const group = new THREE.Group(), olive = material('#526346', .4, .64, 'paint'), dark = material('#303b30', .55, .45, 'metal');
   oval(group, olive, [.18, .235, .18], [0, 0, 0], 20);
   for (const y of [-.12, 0, .12]) { const band = add(group, new THREE.TorusGeometry(.174, .017, 5, 20), dark, 0, y, 0); band.rotation.x = Math.PI / 2; }
   rounded(group, steel, [.14, .06, .12], [0, .245, 0], .02);

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { grassAlbedo } from './surfaces.js';
 
 export async function loadAssets(progress) {
   const manager = new THREE.LoadingManager();
@@ -13,7 +14,7 @@ export async function loadAssets(progress) {
     if (color) map.colorSpace = THREE.SRGBColorSpace;
     return map;
   };
-  const [road, normal, rough, grass, bark, water, environment, leaf, leafAlpha, leafNormal, concrete, concreteNormal, battleRoad, battleNormal, battleRough] = await Promise.all([
+  const [road, normal, rough, grass, bark, water, environment, leaf, leafAlpha, leafNormal, concrete, concreteNormal, battleRoad, battleNormal, battleRough, sand, sandNormal, soil, soilNormal, stone, stoneNormal] = await Promise.all([
     texture('asphalt_02-diffuse.jpg', [5, 1.5]),
     texture('asphalt_02-nor_gl.jpg', [5, 1.5], false),
     texture('asphalt_02-rough.jpg', [5, 1.5], false),
@@ -28,9 +29,16 @@ export async function loadAssets(progress) {
     texture('concrete_wall_007-nor_gl.jpg', [2, 2], false),
     texture('asphalt_01-diffuse.jpg', [1, 1]),
     texture('asphalt_01-nor_gl.jpg', [1, 1], false),
-    texture('asphalt_01-rough.jpg', [1, 1], false)
+    texture('asphalt_01-rough.jpg', [1, 1], false),
+    texture('coast_sand_01-diffuse.jpg', [1, 1]),
+    texture('coast_sand_01-nor_gl.jpg', [1, 1], false),
+    texture('brown_mud_dry-diffuse.jpg', [1, 1]),
+    texture('brown_mud_dry-nor_gl.jpg', [1, 1], false),
+    texture('rock_boulder_dry-diffuse.jpg', [1, 1]),
+    texture('rock_boulder_dry-nor_gl.jpg', [1, 1], false)
   ]);
   environment.mapping = THREE.EquirectangularReflectionMapping;
+  const turf = grassAlbedo(grass);
   const fur = document.createElement('canvas');
   fur.width = fur.height = 256;
   const ctx = fur.getContext('2d');
@@ -67,9 +75,9 @@ export async function loadAssets(progress) {
     leaves: [std('#688253'), std('#4d714f'), std('#8d995b'), std('#3d6450')],
     concrete: std('#adb2a8', { map: concrete, normalMap: concreteNormal, normalScale: new THREE.Vector2(.55,.55), roughness: .97 }),
     darkConcrete: std('#737e80', { map: concrete, normalMap: concreteNormal, roughness: .95 }),
-    foliage: std('#d4dcaa', { map: leaf, alphaMap: leafAlpha, alphaTest: .48, normalMap: leafNormal, normalScale: new THREE.Vector2(.3,.3), side: THREE.DoubleSide, roughness: .82 }),
+    foliage: std('#c0d1b1', { map: leaf, alphaMap: leafAlpha, alphaTest: .48, normalMap: leafNormal, normalScale: new THREE.Vector2(.3,.3), side: THREE.DoubleSide, roughness: .86 }),
     road: std('#a4b0b0', { map: road, normalMap: normal, normalScale: new THREE.Vector2(.45, .45), roughnessMap: rough, roughness: .84 }),
-    grass: std('#c3c89b', { map: grass, roughness: 1 }),
+    grass: std('#c1cbb7', { map: turf, roughness: 1 }),
     yellow: std('#dab777', { roughness: .74 }),
     orange: std('#c56b42', { roughness: .76 }),
     paint: std('#d8d8ba', { roughness: .95 }),
@@ -80,5 +88,5 @@ export async function loadAssets(progress) {
     shader.uniforms.windTime = wind;
     shader.vertexShader = `uniform float windTime;\n${shader.vertexShader}`.replace('#include <begin_vertex>', '#include <begin_vertex>\n#ifdef USE_INSTANCING\nvec3 anchor=instanceMatrix[3].xyz;transformed.x+=sin(windTime*1.4+anchor.x*.8+anchor.z)*.12*uv.y;transformed.z+=cos(windTime+anchor.y)*.07;\n#endif');
   };
-  return { mats, environment, water, wind, maps: { road, normal, rough, grass, bark, battleRoad, battleNormal, battleRough } };
+  return { mats, environment, water, wind, maps: { road, normal, rough, grass: turf, sand, sandNormal, soil, soilNormal, stone, stoneNormal, bark, battleRoad, battleNormal, battleRough } };
 }

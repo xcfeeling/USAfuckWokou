@@ -88,5 +88,41 @@
     "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/concrete_wall_007/concrete_wall_007_nor_gl_1k.jpg",
     "license": "CC0",
     "provider": "Poly Haven"
+  },
+  {
+    "filename": "coast_sand_01-diffuse.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/coast_sand_01/coast_sand_01_diff_1k.jpg",
+    "license": "CC0",
+    "provider": "Poly Haven"
+  },
+  {
+    "filename": "coast_sand_01-nor_gl.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/coast_sand_01/coast_sand_01_nor_gl_1k.jpg",
+    "license": "CC0",
+    "provider": "Poly Haven"
+  },
+  {
+    "filename": "brown_mud_dry-diffuse.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/brown_mud_dry/brown_mud_dry_diff_1k.jpg",
+    "license": "CC0",
+    "provider": "Poly Haven"
+  },
+  {
+    "filename": "brown_mud_dry-nor_gl.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/brown_mud_dry/brown_mud_dry_nor_gl_1k.jpg",
+    "license": "CC0",
+    "provider": "Poly Haven"
+  },
+  {
+    "filename": "rock_boulder_dry-diffuse.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rock_boulder_dry/rock_boulder_dry_diff_1k.jpg",
+    "license": "CC0",
+    "provider": "Poly Haven"
+  },
+  {
+    "filename": "rock_boulder_dry-nor_gl.jpg",
+    "source": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/1k/rock_boulder_dry/rock_boulder_dry_nor_gl_1k.jpg",
+    "license": "CC0",
+    "provider": "Poly Haven"
   }
 ]

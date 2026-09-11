@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { disposeModel } from './chibi.js';
 
 export class CampaignFinale {
-  constructor(scene, effects, battlefield, enemy, player, nuclear, onImpact) {
-    Object.assign(this, { scene, effects, battlefield, enemy, nuclear, onImpact, time: 0, impacted: false, done: false, flash: 0 });
+  constructor(scene, effects, battlefield, enemy, player, nuclear, onImpact, targets = [enemy]) {
+    Object.assign(this, { scene, effects, battlefield, enemy, targets, nuclear, onImpact, time: 0, impacted: false, done: false, flash: 0 });
     this.target = enemy.model.group.position.clone();
     const bounds = new THREE.Box3().setFromPoints([this.target, player, battlefield.palaceCenter.clone().add(new THREE.Vector3(-34, 0, -12)), battlefield.palaceCenter.clone().add(new THREE.Vector3(34, 0, 18))]);
     this.focus = bounds.getCenter(new THREE.Vector3()); this.focus.y = 1.5;
@@ -31,15 +31,18 @@ export class CampaignFinale {
     }
     if (!this.impacted && this.time >= this.impactTime) {
       this.impacted = true; if (this.missile) { disposeModel(this.missile); this.missile = null; }
-      this.enemy.health = 0; this.enemy.bar.visible = this.enemy.warning.visible = false;
+      for (const enemy of this.targets) { enemy.health = 0; enemy.bar.visible = enemy.warning.visible = false; }
       if (this.nuclear) this.effects.nuclearBlast(this.target);
       else { this.effects.explosion(this.target); this.effects.ring(this.target, '#e6efc6', 12); }
       this.battlefield.destroyPalace(this.effects); this.onImpact();
     }
     if (this.impacted) {
-      const elapsed = this.time - this.impactTime, fall = Math.min(1, elapsed / .9), group = this.enemy.model.group;
-      this.enemy.model.animate(this.time, 0, 0, 'stagger');
-      group.rotation.x = -Math.sin(fall * Math.PI / 2) * 1.51; group.rotation.z = .12 * fall; group.position.y = Math.sin(fall * Math.PI) * .35 + .2 * fall;
+      const elapsed = this.time - this.impactTime, fall = Math.min(1, elapsed / .9);
+      for (const enemy of this.targets) {
+        const group = enemy.model.group, progress = enemy.downed ? 1 : fall;
+        enemy.model.animate(this.time, 0, 0, 'stagger');
+        group.rotation.x = -Math.sin(progress * Math.PI / 2) * 1.51; group.rotation.z = .12 * progress; group.position.y = Math.sin(progress * Math.PI) * .35 + .2 * progress;
+      }
       this.flash = this.nuclear ? Math.exp(-elapsed * 6) * .82 : 0;
       if (elapsed > (this.nuclear ? 6.2 : 4.4)) this.done = true;
     }

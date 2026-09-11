@@ -21,11 +21,15 @@ export class TacticalMap {
     for (const box of battlefield.obstacles) { ctx.fillStyle = box.walkOnly ? '#467a89' : '#9eab96'; ctx.fillRect(this.x(box.x - box.halfX), this.z(box.z - box.halfZ), box.halfX * 2 * this.scaleX, box.halfZ * 2 * this.scaleZ); }
     ctx.strokeStyle = '#98b2a866'; ctx.lineWidth = 1; ctx.strokeRect(8, 8, this.canvas.width - 16, this.canvas.height - 16);
   }
-  update(player, facing, enemies, pickups, warnings, camera) {
+  update(player, facing, enemies, pickups, warnings, camera, disaster) {
     if (performance.now() < this.nextUpdate) return;
     this.nextUpdate = performance.now() + 80;
     const ctx = this.ctx; ctx.drawImage(this.background, 0, 0);
     ctx.save(); ctx.beginPath(); ctx.rect(8, 8, this.canvas.width - 16, this.canvas.height - 16); ctx.clip();
+    if (disaster && disaster.phase !== 'idle') {
+      ctx.beginPath(); ctx.ellipse(this.x(disaster.center.x), this.z(disaster.center.z), disaster.radius * this.scaleX, disaster.radius * this.scaleZ, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#74ffab55'; ctx.strokeStyle = '#bbffbf'; ctx.lineWidth = 2; ctx.fill(); ctx.stroke();
+    }
     ctx.beginPath();
     this.corners.forEach((corner, i) => { this.ray.setFromCamera(corner, camera); this.ray.ray.intersectPlane(this.plane, this.point); i ? ctx.lineTo(this.x(this.point.x), this.z(this.point.z)) : ctx.moveTo(this.x(this.point.x), this.z(this.point.z)); });
     ctx.closePath(); ctx.fillStyle = '#d9efc817'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#dcebd384'; ctx.stroke();

@@ -8,6 +8,7 @@
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="./style.css">
   <link rel="stylesheet" href="./mobile.css">
+  <link rel="stylesheet" href="./campaign.css">
 </head>
 <body data-scene="beach">
   <main id="game" aria-label="老美大战倭寇。方向键或 WASD 移动，空格射击，数字 1 至 4 切换武器，G 投掷手雷，E 英雄技能，Shift 闪避，最终战支援就绪时按 N 召唤核弹。">
@@ -19,7 +20,7 @@
     <header class="topbar">
       <div class="identity"><h1>老美大战倭寇</h1><p id="place">海边登陆 / 抢滩先锋</p></div>
       <section class="battle-hud" aria-label="关卡进度">
-        <div class="mission-number"><small>关卡 / 16</small><strong id="level">01</strong></div>
+        <div class="mission-number"><small>关卡 / 26</small><strong id="level">01</strong></div>
         <div class="mission-progress"><div><span>敌军击破</span><strong id="kills">0 / 10</strong></div><div class="wave-track"><span id="wave-progress"></span></div></div>
         <div class="score"><small>战绩</small><strong id="score">0</strong></div>
         <div class="battle-time"><small>战斗用时</small><strong id="battle-time">00:00</strong></div>
@@ -36,7 +37,7 @@
       <div class="weapon-row"><i data-lucide="target"></i><div><strong id="weapon-name">制式手枪</strong><small id="weapon-detail">伤害 22 · 火力 79</small></div><b id="weapon-rank">+0</b></div>
     </aside>
     <aside class="campaign-progress" aria-label="固定战役路线">
-      <div><strong>战役进程</strong><span id="chapter-progress">1 / 3</span></div>
+      <div><strong>战役进程</strong><span id="chapter-progress">1 / 5</span></div>
       <ol class="campaign-route"></ol>
     </aside>
     <aside class="tactical-map" aria-label="战术地图：浅蓝色为英雄，红色为敌军，金色为枪械掉落">
@@ -47,7 +48,10 @@
     <aside class="boss-panel" id="boss-panel" aria-label="首领状态" hidden>
       <div><strong id="boss-name">鬼子头目</strong><span id="boss-phase">逼近</span><output id="boss-health">1550 / 1550</output></div>
       <div class="boss-track"><span id="boss-health-bar"></span></div>
+      <div class="escort-row" id="escort-0" hidden><span></span><progress max="1" value="1" aria-label="护卫一生命"></progress></div>
+      <div class="escort-row" id="escort-1" hidden><span></span><progress max="1" value="1" aria-label="护卫二生命"></progress></div>
     </aside>
+    <aside class="disaster-panel" id="disaster-panel" role="status" hidden><i data-lucide="arrow-up" id="disaster-arrow"></i><div><strong id="disaster-title"></strong><span id="disaster-status"></span></div></aside>
     <div class="toast" id="toast" role="status"></div>
     <aside class="nuclear-support" id="nuclear-support" role="status" hidden>
       <div><strong>生命垂危 · 核弹支援</strong><span id="support-status">紧急保护 8 秒</span></div>
@@ -72,6 +76,10 @@
     </nav>
     <div id="render-settings" class="render-settings" popover><label for="quality">画质</label><select id="quality"><option value="performance">流畅</option><option value="balanced" selected>均衡</option><option value="high">精细</option></select></div>
     <div class="loading" id="loading"><div><p>战役集结</p><h2>老美大战倭寇</h2><span id="loading-state">正在部署战场</span><progress id="load-progress" max="100" value="8"></progress></div></div>
+    <section class="travel-overlay" id="travel-overlay" aria-label="战役转场" hidden>
+      <div class="travel-caption"><span id="travel-chapter"></span><h2 id="travel-title"></h2><p id="travel-route"></p><progress id="travel-progress" max="1" value="0" aria-label="行进进度"></progress></div>
+      <button class="tool" id="skip-travel" aria-label="跳过转场" data-tooltip="跳过转场"><i data-lucide="arrow-right"></i></button>
+    </section>
     <div class="overlay-card victory" id="level-clear" hidden><i data-lucide="shield"></i><span>区域肃清</span><strong>第 <b id="level-clear-value">1</b> 关完成</strong><small id="next-level">下一关 2</small></div>
     <section class="campaign-victory game-over" id="game-over" role="dialog" aria-modal="true" aria-labelledby="defeat-title" hidden>
       <div class="defeat-content">
@@ -83,7 +91,7 @@
     </section>
     <section class="campaign-victory" id="campaign-victory" role="dialog" aria-modal="true" aria-labelledby="victory-title" hidden>
       <div class="victory-content">
-        <span>战役完成 / 16 关</span><h2 id="victory-title">胜利</h2><p id="victory-result">皇宫已化为废墟</p>
+        <span>战役完成 / 26 关</span><h2 id="victory-title">胜利</h2><p id="victory-result">皇宫已化为废墟</p>
         <img class="victory-image" src="./assets/victory.webp" alt="战争结束后的受降仪式" width="880" height="310" decoding="async">
         <dl class="victory-stats"><div><dt>基础战绩</dt><dd id="victory-base">0</dd></div><div><dt>战斗用时</dt><dd id="victory-time">00:00</dd></div><div><dt>时间奖励</dt><dd id="victory-bonus">+0</dd></div><div class="victory-total"><dt>最终得分</dt><dd id="victory-score">0</dd></div></dl>
         <div id="victory-leaderboard"></div>
@@ -100,7 +108,7 @@
       <ol class="leaderboard-list" aria-label="抗日英雄得分排名" tabindex="0"></ol>
       <p class="leaderboard-personal" hidden></p>
     </section>
-    <div id="pause-screen" class="pause-screen" hidden><span>战术暂停</span><button id="resume"><i data-lucide="play"></i>继续战斗</button></div>
+    <div id="pause-screen" class="pause-screen" hidden><span>战术暂停</span><button id="resume"><i data-lucide="play"></i>继续战斗</button><div id="pause-tools" class="pause-tools" role="group" aria-label="英雄、画面和声音设置" hidden></div></div>
     <dialog id="garage" aria-labelledby="garage-title">
       <div class="garage-header"><div><span class="small-label">老美大战倭寇</span><h2 id="garage-title">英雄配置</h2></div><div class="garage-tools"><button class="tool" id="randomize" aria-label="随机英雄" data-tooltip="随机英雄"><i data-lucide="dices"></i></button><button class="tool" id="garage-close" aria-label="关闭"><i data-lucide="x"></i></button></div></div>
       <div class="garage-tabs" role="tablist" aria-label="配置类别"><button role="tab" aria-selected="true" data-tab="character" id="tab-character" aria-controls="choices">英雄</button></div>

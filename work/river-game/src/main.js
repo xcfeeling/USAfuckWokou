@@ -8,7 +8,7 @@ import { createIcons, Camera, VolumeX, Volume2, Pause, Play, X, ArrowRight, Arro
 import { loadAssets } from './assets.js';
 import { HEROES, WEAPONS, ENEMY_NAMES, isBossType, createHero, createEnemy, releaseEnemy, createGun, createGrenade, createPickup, disposeModel } from './chibi.js';
 import { createBattlefield } from './battlefield.js';
-import { CAMPAIGN, CHAPTERS, missionAt, chapterAt } from './campaign.js';
+import { CAMPAIGN, CHAPTERS, ENEMY_SCORES, missionAt, chapterAt } from './campaign.js';
 import { CampaignFinale } from './campaign-finale.js';
 import { CombatPhysics } from './combat-physics.js';
 import { Navigation } from './navigation.js';
@@ -18,6 +18,8 @@ import { Effects } from './effects.js';
 import { Leaderboard } from './leaderboard.js';
 import { calculateResult } from './score-rules.js';
 import { TouchJoystick } from './touch-joystick.js';
+import { Disasters } from './disasters.js';
+import { TravelSequence } from './travel-sequence.js';
 
 const elements = new Map();
 const $ = id => { if (!elements.has(id)) elements.set(id, document.getElementById(id)); return elements.get(id); };
@@ -41,24 +43,25 @@ const savePreferences = () => { try { localStorage.setItem('frontline-arena-v8',
 const heroInfo = () => HEROES.find(item => item.id === preferences.character);
 const weaponInfo = () => WEAPONS.find(item => item.id === state.weapon);
 const startingInventory = () => Object.fromEntries(WEAPONS.map(weapon => [weapon.id, { owned: weapon.id === 'pistol', ammo: weapon.id === 'pistol' ? -1 : 0, rank: 0 }]));
-const weaponDamage = (weapon = weaponInfo()) => weapon.damage * (1 + state.inventory[weapon.id].rank * .08);
-let renderer, camera, composer, bloom, smaa, scene, assets, battlefield, physics, effects, hero, sun, navigation, tacticalMap, bossCombat;
-let thumbnailRenderer, audioContext, selectedTab = 'character', draft, checkpoint, finale, leaderboard, joystick, releaseFire;
+const weaponDamage = (weapon = weaponInfo()) => weapon.damage * (1 + state.inventory[weapon.id].rank * .05);
+let renderer, camera, composer, bloom, smaa, scene, assets, battlefield, physics, effects, hero, sun, skyLight, navigation, tacticalMap, bossCombat;
+let thumbnailRenderer, audioContext, selectedTab = 'character', draft, checkpoint, finale, leaderboard, joystick, releaseFire, disasters, travel, renderPass;
 const enemies = [], fallen = [], pickups = [], warnings = [], grenades = [], keys = new Set(), fireInputs = new Set(), thumbnails = new Map(), soundBuffers = new Map();
 let hudTimer = 0, renderDirty = true, resolutionScale = 1, frameSample = 0, frameSum = 0;
 let combatStartedAt = null;
 const viewport = { width: 1, height: 1, span: 24 };
 const playerPosition = new THREE.Vector3(), facing = new THREE.Vector3(0, 0, 1), movement = new THREE.Vector3();
-const cameraFocus = new THREE.Vector3(0, .5, 0), cameraOffset = new THREE.Vector3(0, 23.5, 34), sunOffset = new THREE.Vector3(-16, 28, 16);
+const cameraFocus = new THREE.Vector3(0, .5, 0), cameraOffset = new THREE.Vector3(0, 23.5, 34), sunOffset = new THREE.Vector3(-22, 34, 14);
 const muzzlePosition = new THREE.Vector3(), axisY = new THREE.Vector3(0, 1, 0);
 const raycaster = new THREE.Raycaster(), shotDirection = new THREE.Vector3(), aimProjection = new THREE.Vector3();
+const dashDirection = new THREE.Vector3();
 const silhouette = new THREE.Group(), silhouetteParts = [], silhouetteMaterial = new THREE.MeshBasicMaterial({ color: '#87dce8', transparent: true, opacity: .22, depthTest: false, depthWrite: false });
 const state = {
   ready: false, phase: 'playing', paused: false, time: 0, previous: 0, level: 1,
   total: CAMPAIGN[0].total, scheduled: 0, kills: 0, score: 0, health: 120, weapon: 'pistol', inventory: startingInventory(), grenades: 2, grenadeCooldown: 0,
   spawnTimer: 2.2, shotTimer: 0, recoil: 0, hurt: 0, invulnerable: 0, dash: 0, dashCooldown: 0,
   skill: 0, skillCooldown: 0, combo: 0, comboTimer: 0, clearTimer: 0, toast: 0, ambientTimer: 0, dropPity: 0, grenadeDrops: 0,
-  transitioning: false, hitMarker: 0, supportUnlocked: false, combatSeconds: 0, result: null, settingsOpen: false
+  transitioning: false, hitMarker: 0, supportUnlocked: false, combatSeconds: 0, result: null, settingsOpen: false, bossSupply: false
 };
 
 function active() { return state.ready && !state.transitioning && !state.paused && !$('garage').open && !state.settingsOpen && !document.hidden; }
@@ -105,8 +108,11 @@ function applyBattlefield(level) {
   const chapter = chapterAt(level), next = createBattlefield(chapter.id, assets); battlefield?.dispose(); battlefield = next; scene.add(battlefield.root);
   physics.setObstacles(battlefield.obstacles); navigation = new Navigation(battlefield.obstacles); tacticalMap.setBattlefield(battlefield);
   document.body.dataset.scene = chapter.id;
-  scene.background = new THREE.Color(chapter.sky); scene.fog = new THREE.Fog(scene.background, 65, 145);
-  sun.color.set(chapter.sun); scene.environmentIntensity = chapter.id === 'city' ? .55 : .45;
+  scene.background = new THREE.Color(chapter.sky); scene.fog = new THREE.Fog(scene.background, 82, 180);
+  sun.color.set(chapter.sun); sun.intensity = chapter.id === 'jungle' ? 3.2 : chapter.id === 'city' ? 3.5 : 3.6;
+  skyLight.color.set(chapter.sky).lerp(new THREE.Color('#ffffff'), .55);
+  skyLight.groundColor.set(chapter.ground).multiplyScalar(.55);
+  scene.environmentIntensity = .45;
 }
 function applyHero() {
   if (hero) disposeModel(hero.group);
@@ -137,6 +143,7 @@ function updateInventoryHud() {
   for (const weapon of WEAPONS) {
     const slot = state.inventory[weapon.id], button = $(`slot-${weapon.id}`);
     button.setAttribute('aria-pressed', String(state.weapon === weapon.id)); button.classList.toggle('empty', !slot.owned || slot.ammo === 0);
+    button.classList.toggle('unowned', !slot.owned);
     button.querySelector('.slot-ammo').textContent = slot.owned ? slot.ammo === -1 ? '∞' : slot.ammo : '--';
     button.querySelector('.slot-rank').textContent = slot.rank ? `+${slot.rank}` : '';
     button.setAttribute('aria-label', `${weapon.name}，${!slot.owned ? '尚未获取' : slot.ammo === -1 ? '无限子弹' : `剩余 ${slot.ammo} 发`}`);
@@ -167,7 +174,8 @@ function healthBar(enemy) {
 
 function scheduleEnemy() {
   const serial = state.scheduled, side = serial % 4, mission = missionAt(state.level);
-  const type = mission.boss && serial === state.total - 1 ? mission.boss : Math.random() < mission.heavyChance ? 'heavy' : 'raider';
+  const roll = Math.random(), ranged = enemies.filter(enemy => enemy.type === 'soldier').length + warnings.filter(warning => warning.type === 'soldier').length;
+  const type = serial >= mission.regularCount ? mission.bosses[serial - mission.regularCount] : roll < mission.soldierChance && ranged < 3 ? 'soldier' : roll < mission.soldierChance + mission.heavyChance ? 'heavy' : 'raider';
   const boss = isBossType(type);
   let position;
   for (let attempt = 0; attempt < 32; attempt++) {
@@ -183,7 +191,7 @@ function scheduleEnemy() {
 }
 function spawnEnemy(warning) {
   const model = createEnemy(warning.type), isBoss = isBossType(warning.type), mission = missionAt(state.level);
-  const health = Math.round(isBoss ? mission.bossHealth : 34 * mission.healthScale * (warning.type === 'heavy' ? 2.4 : 1));
+  const health = Math.round(warning.type === 'emperor' ? mission.emperorHealth : warning.type === 'officer' ? mission.officerHealth : isBoss ? mission.bossHealth : 34 * mission.healthScale * (warning.type === 'heavy' ? 2.4 : warning.type === 'soldier' ? 1.55 : 1));
   const body = physics.addEnemy(warning.position.x, warning.position.z, model.radius || .42 * model.scale, isBoss ? 5 : 1);
   const enemy = { model, body, type: warning.type, name: ENEMY_NAMES[warning.type], health, maxHealth: health, speed: isBoss ? 2.05 + mission.chapterIndex * .13 : 1.4 * mission.speedScale * (warning.type === 'raider' ? 1 : .76), attack: random(.4, .8), windup: 0, strike: 0, stagger: 0, hit: 0, phase: random(0, 10), route: [], routeTimer: random(0, .3) };
   model.group.position.set(body.position.x, 0, body.position.z); scene.add(model.group);
@@ -202,13 +210,21 @@ function updateSpawning(dt) {
   }
   state.spawnTimer -= dt;
   const mission = missionAt(state.level);
-  if (mission.boss && state.scheduled === state.total - 1 && state.kills < state.total - 1) return;
+  if (mission.bosses.length && state.scheduled >= mission.regularCount && state.kills < mission.regularCount) return;
+  if (mission.bosses.length && state.scheduled === mission.regularCount && state.kills === mission.regularCount && !state.bossSupply) {
+    state.bossSupply = true; state.spawnTimer = 4.5; state.health = Math.min(heroInfo().health, state.health + 22);
+    dropWeapon(playerPosition, 'rifle'); toast('首领接近 · 战地补给抵达'); return;
+  }
   if (state.scheduled < state.total && enemies.length + warnings.length < mission.maxAlive && state.spawnTimer <= 0) {
     scheduleEnemy(); state.spawnTimer = mission.spawnInterval * random(.65, 1.4);
   }
 }
 function dropWeapon(position, forcedId) {
-  if (pickups.filter(pickup => pickup.kind === 'weapon').length >= 5) return false;
+  const groundWeapons = pickups.filter(pickup => pickup.kind === 'weapon');
+  if (groundWeapons.length >= 5) {
+    if (!forcedId) return false;
+    const oldest = groundWeapons[0]; disposeModel(oldest.group); pickups.splice(pickups.indexOf(oldest), 1);
+  }
   const missing = WEAPONS.slice(1).filter(item => !state.inventory[item.id].owned);
   const weapon = forcedId ? WEAPONS.find(item => item.id === forcedId) : choose(missing.length && Math.random() < .7 ? missing : WEAPONS.slice(1)), group = createPickup(weapon.id);
   group.position.copy(position); scene.add(group); pickups.push({ group, kind: 'weapon', weapon, life: 45, phase: random(0, 6) }); effects.ring(position, weapon.color, 1.5);
@@ -223,28 +239,38 @@ function dropGrenade(position) {
 }
 function removeEnemy(enemy, defeated = false) {
   const index = enemies.indexOf(enemy); if (index === -1) return;
-  if (isBossType(enemy.type)) bossCombat.remove(enemy);
-  enemies.splice(index, 1); physics.removeEnemy(enemy.body); disposeModel(enemy.bar); disposeModel(enemy.warning);
+  bossCombat.remove(enemy);
+  enemies.splice(index, 1); if (!enemy.downed) physics.removeEnemy(enemy.body); disposeModel(enemy.bar); disposeModel(enemy.warning);
   if (defeated) {
     if (fallen.length >= 8) releaseEnemy(fallen.shift().model);
     fallen.push({ model: enemy.model, life: 1.25, direction: facing.clone(), angle: random(-.3, .3) });
   } else releaseEnemy(enemy.model);
 }
+function awardEnemy(enemy) {
+  if (enemy.counted) return;
+  enemy.counted = true; state.kills++; state.score += ENEMY_SCORES[enemy.type] * state.level;
+}
 function damageEnemy(enemy, damage, impact, source = 'bullet') {
-  if (state.phase !== 'playing' || !enemies.includes(enemy)) return;
-  if (isBossType(enemy.type) && source === 'bullet') damage *= enemy.stagger > 0 || enemy.bossMode === 'recover' ? 1.3 : .78;
+  if (state.phase !== 'playing' || enemy.downed || !enemies.includes(enemy)) return;
+  if (isBossType(enemy.type) && source === 'bullet') damage *= enemy.stagger > 0 || enemy.bossMode === 'recover' ? 1.1 : .76;
   enemy.health -= damage;
   enemy.hit = .15; state.hitMarker = .13;
   effects.hit(impact, facing, enemy.type !== 'raider');
   if (enemy.health > 0) return;
-  if (enemy.type === 'emperor') { beginFinale(enemy, false); return; }
+  if (enemy.type === 'emperor') {
+    awardEnemy(enemy); enemy.health = 0; enemy.downed = true; enemy.body.velocity.setZero(); physics.removeEnemy(enemy.body); bossCombat.remove(enemy);
+    enemy.bar.visible = enemy.warning.visible = false; enemy.model.animate(state.time, 0, 0, 'stagger'); enemy.model.group.rotation.x = -1.45; enemy.model.group.position.y = .2;
+    effects.burst(enemy.model.group.position, 'crash');
+    if (state.kills === state.total) beginFinale(enemy, false); else toast('天皇已倒下 · 清除剩余护卫');
+    return;
+  }
   const position = enemy.model.group.position.clone();
-  state.kills++; state.score += (enemy.type === 'boss' ? 600 : enemy.type === 'heavy' ? 180 : 100) * state.level;
+  awardEnemy(enemy);
   state.combo++; state.comboTimer = 3; state.dropPity++;
   effects.emit(position.clone().setY(.85), 18, enemy.type === 'boss' ? '#ffd186' : '#edc493', { direction: facing, speed: 2.6, up: 2.5, gravity: 9, life: .45, size: .09 });
   effects.debrisBurst(position.clone().setY(.7), enemy.type === 'heavy' ? 9 : 4, enemy.type === 'heavy' ? '#90999d' : '#a99e82');
   effects.smoke(position, 3, '#a4a499', .65);
-  if (enemy.type === 'boss') { effects.burst(position, 'crash'); dropWeapon(position); dropGrenade(position); }
+  if (isBossType(enemy.type)) { effects.burst(position, 'crash'); dropWeapon(position); dropGrenade(position); }
   else {
     const firstWeapon = state.level === 1 && state.kills === 2 && !state.inventory.rifle.owned;
     if (firstWeapon || state.dropPity >= 6 || Math.random() < .22) {
@@ -252,7 +278,11 @@ function damageEnemy(enemy, damage, impact, source = 'bullet') {
     }
     if (state.grenadeDrops < (state.level < 7 ? 1 : 2) && Math.random() < .06 && dropGrenade(position)) state.grenadeDrops++;
   }
-  removeEnemy(enemy, true); if (state.kills === state.total) clearLevel();
+  removeEnemy(enemy, true);
+  if (state.kills === state.total) {
+    const emperor = enemies.find(item => item.type === 'emperor');
+    if (emperor) beginFinale(emperor, false); else clearLevel();
+  }
 }
 function addTracer(start, end, color) {
   if (start.distanceToSquared(end) < .0001) return;
@@ -260,7 +290,7 @@ function addTracer(start, end, color) {
 }
 function fire() {
   if (!playing() || state.shotTimer > 0) return;
-  const weapon = weaponInfo(), boost = state.skill > 0 && preferences.character === 'armor' ? 1.65 : 1;
+  const weapon = weaponInfo(), boost = state.skill > 0 && preferences.character === 'armor' ? 1.5 : 1;
   const slot = state.inventory[weapon.id]; if (!slot.owned || slot.ammo === 0) return;
   if (slot.ammo > 0) slot.ammo--;
   state.shotTimer = weapon.interval / boost; state.recoil = 1;
@@ -272,6 +302,7 @@ function fire() {
     const wallDistance = navigation.shotDistance(raycaster.ray, weapon.range);
     const hits = [];
     for (const enemy of enemies) {
+      if (enemy.downed) continue;
       center.set(enemy.body.position.x, origin.y, enemy.body.position.z); sphere.set(center, enemy.model.hitRadius || .53 * enemy.model.scale);
       if (raycaster.ray.intersectSphere(sphere, intersection)) {
         const distance = origin.distanceTo(intersection);
@@ -309,22 +340,24 @@ function updateGrenades(dt) {
     if (grenade.fuse > 0) continue;
     removeGrenade(grenade); effects.burst(position, 'crash'); sound('explosion');
     for (const enemy of [...enemies]) {
+      if (enemy.downed) continue;
       const direction = new THREE.Vector3(enemy.body.position.x - position.x, 0, enemy.body.position.z - position.z), distance = direction.length();
       if (distance > 5.5 + (enemy.model.radius || .42)) continue;
       const target = new THREE.Vector3(enemy.body.position.x, .85, enemy.body.position.z), origin = position.clone().add(new THREE.Vector3(0, .12, 0));
       const separation = target.distanceTo(origin); raycaster.set(origin, target.sub(origin).normalize());
       if (navigation.shotDistance(raycaster.ray, separation) < separation - .05) continue;
-      damageEnemy(enemy, 190 * Math.max(.5, 1 - distance / 12), enemy.model.group.position.clone().setY(.8), 'grenade');
+      damageEnemy(enemy, 170 * Math.max(.5, 1 - distance / 12), enemy.model.group.position.clone().setY(.8), 'grenade');
       if (state.phase !== 'playing' || !enemies.includes(enemy)) continue;
       if (direction.lengthSq() < .01) direction.copy(facing); else direction.normalize();
       physics.knockback(enemy.body, direction, isBossType(enemy.type) ? 9 : 12);
       enemy.stagger = isBossType(enemy.type) ? .9 : 1.1; enemy.windup = 0; enemy.routeTimer = 0;
-      if (isBossType(enemy.type)) bossCombat.interrupt(enemy);
+      if (isBossType(enemy.type) || enemy.type === 'soldier') bossCombat.interrupt(enemy);
     }
   }
 }
-function takeDamage(amount) {
+function takeDamage(amount, source = 'enemy') {
   if (state.invulnerable > 0 || state.phase !== 'playing') return;
+  if (source === 'enemy') amount *= missionAt(state.level).damageScale;
   state.health = Math.max(0, state.health - amount); state.hurt = .24; state.invulnerable = .65;
   // Catch the first threshold crossing, including a hit that would otherwise be fatal.
   if (!state.supportUnlocked && state.health <= heroInfo().health * .05 && enemies.some(enemy => enemy.type === 'emperor')) {
@@ -332,6 +365,7 @@ function takeDamage(amount) {
   }
   effects.emit(point(), 21, '#ff8879', { speed: 3, up: 2, life: .4, size: .12 }); sound('hurt');
   if (!state.health) {
+    disasters.clear(); battlefield.setDisaster?.(null, 0);
     state.phase = 'gameover'; syncCombatClock(); clearInput(); $('game-over').hidden = false;
     $('game-over-score').textContent = state.score.toLocaleString('zh-CN'); $('failed-level').textContent = state.level;
     state.result = calculateResult(state.score, state.combatSeconds, 'defeat');
@@ -352,12 +386,14 @@ function summonNuclear() {
 function beginFinale(emperor, nuclear) {
   if (state.phase !== 'playing') return;
   state.phase = 'ending'; syncCombatClock(); clearInput(); physics.player.velocity.setZero(); emperor.body.velocity.setZero();
-  bossCombat.remove(emperor); bossCombat.clear();
+  const targets = enemies.filter(enemy => isBossType(enemy.type));
+  for (const enemy of targets) { enemy.body.velocity.setZero(); bossCombat.remove(enemy); }
+  bossCombat.clear(); disasters.clear();
   for (const grenade of [...grenades]) removeGrenade(grenade);
   $('nuclear-support').hidden = true; document.body.classList.add('cinematic');
   finale = new CampaignFinale(scene, effects, battlefield, emperor, playerPosition, nuclear, () => {
-    state.kills = state.total; state.score += 1800 * state.level; sound('explosion');
-  });
+    for (const enemy of targets) awardEnemy(enemy); sound('explosion');
+  }, targets);
   toast(nuclear ? '核弹支援抵达' : '最终目标已击破'); updateHud();
 }
 function completeCampaign() {
@@ -375,7 +411,8 @@ function completeCampaign() {
 }
 function dodge() {
   if (!playing() || state.dashCooldown > 0) return;
-  state.dash = .20; state.dashCooldown = 2.3; state.invulnerable = Math.max(state.invulnerable, .45);
+  dashDirection.copy(movement.lengthSq() > .01 ? movement : facing).normalize();
+  state.dash = .22; state.dashCooldown = 1.7; state.invulnerable = Math.max(state.invulnerable, .48);
   effects.ring(point(.05), '#b9e7e6', 2); effects.emit(point(.15), 25, '#cce9e6', { speed: 2, up: .5, life: .4 });
 }
 function activateSkill() {
@@ -386,7 +423,7 @@ function activateSkill() {
   if (preferences.character === 'captain') state.invulnerable = Math.max(state.invulnerable, state.skill);
   if (preferences.character === 'panda') {
     effects.ring(point(.03), '#ffdf9d', 8);
-    for (const enemy of [...enemies]) if (enemy.model.group.position.distanceTo(playerPosition) < 6 && navigation.unobstructed(playerPosition, enemy.body.position, false)) damageEnemy(enemy, 110 * (1 + Math.min(10, state.level - 1) * .06), enemy.model.group.position.clone().setY(.8));
+    for (const enemy of [...enemies]) if (enemy.model.group.position.distanceTo(playerPosition) < 6 && navigation.unobstructed(playerPosition, enemy.body.position, false)) damageEnemy(enemy, 95 * (1 + Math.min(10, state.level - 1) * .04), enemy.model.group.position.clone().setY(.8), 'skill');
     state.skill = .9;
   }
   toast(heroInfo().skill); sound('pickup');
@@ -397,7 +434,7 @@ function drivePlayer(dt) {
   else if (joystick) movement.set(joystick.x, 0, joystick.y);
   if (movement.lengthSq()) facing.copy(movement).normalize();
   const speed = heroInfo().speed;
-  physics.player.velocity.set(state.dash > 0 ? facing.x * 13 : movement.x * speed, 0, state.dash > 0 ? facing.z * 13 : movement.z * speed);
+  physics.player.velocity.set(state.dash > 0 ? dashDirection.x * 13 : movement.x * speed, 0, state.dash > 0 ? dashDirection.z * 13 : movement.z * speed);
   for (const field of ['shotTimer', 'recoil', 'hurt', 'invulnerable', 'dash', 'dashCooldown', 'skill', 'skillCooldown', 'comboTimer', 'grenadeCooldown']) state[field] = Math.max(0, state[field] - dt * (field === 'recoil' ? 9 : 1));
   if (state.comboTimer === 0) state.combo = 0;
 }
@@ -405,24 +442,26 @@ function driveEnemies(dt) {
   const slow = state.skill > 0 && preferences.character === 'ranger' ? .32 : 1;
   navigation.searchesRemaining = 2;
   for (const enemy of enemies) {
+    if (enemy.downed) continue;
     enemy.hit = Math.max(0, enemy.hit - dt);
     if (enemy.stagger > 0) {
       enemy.stagger = Math.max(0, enemy.stagger - dt); enemy.body.velocity.x *= Math.exp(-dt * 3.4); enemy.body.velocity.z *= Math.exp(-dt * 3.4);
       enemy.model.animate(state.time, 0, 0, 'stagger'); continue;
     }
-    if (isBossType(enemy.type) && bossCombat.update(enemy, dt, { player: playerPosition, time: state.time, level: state.level, slow, navigation, takeDamage, toast })) continue;
+    const tactical = isBossType(enemy.type) || enemy.type === 'soldier';
+    if (tactical && bossCombat.update(enemy, dt, { player: playerPosition, time: state.time, level: state.level, slow, navigation, takeDamage, toast })) continue;
     const dx = playerPosition.x - enemy.body.position.x, dz = playerPosition.z - enemy.body.position.z, distance = Math.hypot(dx, dz);
     const attackRange = 1.25 + (enemy.model.scale - 1) * .5;
-    const canAttack = !isBossType(enemy.type) && distance < attackRange + .55 && navigation.unobstructed(enemy.body.position, playerPosition, false);
+    const canAttack = !tactical && distance < attackRange + .55 && navigation.unobstructed(enemy.body.position, playerPosition, false);
     enemy.strike = Math.max(0, enemy.strike - dt * 3); enemy.attack = Math.max(0, enemy.attack - dt * slow);
     if (enemy.windup > 0) {
       enemy.windup -= dt * slow;
       if (enemy.windup <= 0) {
-        enemy.strike = 1; enemy.attack = Math.max(.65, 1.3 - state.level * .025);
+        enemy.strike = 1; enemy.attack = Math.max(1, 1.55 - state.level * .018);
         if (canAttack) takeDamage(enemy.type === 'boss' ? 27 : enemy.type === 'heavy' ? 18 : 11);
         effects.slash(enemy.model.group.position.clone().setY(.8), enemy.model.group.rotation.y, 1.05);
       }
-    } else if (canAttack && distance < attackRange + .3 && enemy.attack === 0) enemy.windup = .48;
+    } else if (canAttack && distance < attackRange + .3 && enemy.attack === 0) enemy.windup = .62;
     let target = playerPosition;
     enemy.routeTimer -= dt;
     if (!navigation.unobstructed(enemy.body.position, playerPosition)) {
@@ -442,11 +481,12 @@ function syncModels() {
   hero.group.position.copy(playerPosition); hero.group.rotation.y = Math.atan2(facing.x, facing.z);
   hero.animate(state.time, movement.lengthSq() > 0 ? 1 : 0, state.recoil, state.phase === 'clear' ? 1 : 0);
   for (const enemy of enemies) {
+    if (enemy.downed) continue;
     enemy.model.group.position.set(enemy.body.position.x, 0, enemy.body.position.z);
     const ratio = Math.max(0, enemy.health / enemy.maxHealth);
     enemy.bar.position.set(enemy.body.position.x, enemy.model.barHeight || 2.38 * enemy.model.scale, enemy.body.position.z);
     enemy.fill.scale.x = ratio; enemy.fill.position.x = -.47 * (1 - ratio);
-    enemy.warning.position.set(enemy.body.position.x, .04, enemy.body.position.z); enemy.warning.material.opacity = enemy.windup > 0 ? .35 + (.48 - enemy.windup) : 0;
+    enemy.warning.position.set(enemy.body.position.x, .04, enemy.body.position.z); enemy.warning.material.opacity = enemy.windup > 0 ? .35 + (.62 - enemy.windup) : 0;
     enemy.warning.visible = enemy.windup > 0; enemy.bar.visible = enemy.health < enemy.maxHealth && !isBossType(enemy.type);
   }
 }
@@ -487,12 +527,14 @@ function clearLevel() {
   if (state.phase !== 'playing') return;
   if (!missionAt(state.level + 1)) return;
   state.phase = 'clear'; syncCombatClock(); state.clearTimer = 3; clearInput();
+  disasters.clear(); battlefield.setDisaster?.(null, 0);
   for (const grenade of [...grenades]) removeGrenade(grenade); bossCombat.clear();
   $('level-clear').hidden = false; $('level-clear-value').textContent = state.level;
   $('next-level').textContent = `下一关 · ${chapterAt(state.level + 1).name} / ${missionAt(state.level + 1).name}`;
   effects.burst(point(.3), 'success'); sound('pickup');
 }
 function clearCombat() {
+  disasters?.clear(); battlefield?.setDisaster?.(null, 0);
   leaderboard.hide(); state.result = null;
   finale?.dispose(); finale = null; camera.zoom = 1; camera.updateProjectionMatrix();
   document.body.classList.remove('cinematic', 'victory-shown', 'result-shown'); $('finale-flash').style.opacity = 0;
@@ -512,14 +554,15 @@ function startLevel(level, retry = false, spawnPoint) {
   state.level = level; state.total = mission.total; state.supportUnlocked = false;
   if (rebuild) applyBattlefield(level);
   state.health = retry || level === 1 ? heroInfo().health : Math.min(heroInfo().health, state.health + Math.round(heroInfo().health * .25));
-  state.phase = 'playing'; state.scheduled = state.kills = state.dropPity = state.grenadeDrops = 0; state.spawnTimer = 2.1; state.invulnerable = 1.5;
+  state.phase = 'playing'; state.scheduled = state.kills = state.dropPity = state.grenadeDrops = 0; state.bossSupply = false; state.spawnTimer = 2.1; state.invulnerable = 1.5;
+  disasters.reset(mission, retry);
   for (const field of ['shotTimer', 'recoil', 'hurt', 'dash', 'dashCooldown', 'skill', 'skillCooldown', 'combo', 'comboTimer', 'clearTimer', 'grenadeCooldown']) state[field] = 0;
   physics.player.position.set(position.x, .6, position.z); playerPosition.copy(position); facing.set(0, 0, 1); hero.equip(state.weapon);
   checkpoint = { loadout: structuredClone({ score: state.score, inventory: state.inventory, weapon: state.weapon, grenades: state.grenades }), position: position.clone() };
   $('place').textContent = `${chapterAt(level).name} / ${mission.name}`;
   $('chapter-progress').textContent = `${mission.stage + 1} / ${chapterAt(level).missions.length}`;
   document.querySelectorAll('.campaign-route li').forEach((item, index) => { item.classList.toggle('current', index === mission.chapterIndex); item.classList.toggle('complete', index < mission.chapterIndex); if (index === mission.chapterIndex) item.setAttribute('aria-current', 'step'); else item.removeAttribute('aria-current'); });
-  $('game-over').hidden = $('level-clear').hidden = true; setPause(false); syncModels(); followCamera(0, true); updateSilhouette(); updateWeaponHud(); updateHud(); toast(`第 ${level} / ${CAMPAIGN.length} 关 · ${mission.name}${mission.boss ? ' · 首领战' : ''}`);
+  $('game-over').hidden = $('level-clear').hidden = true; setPause(false); syncModels(); followCamera(0, true); updateSilhouette(); updateWeaponHud(); updateHud(); toast(`第 ${level} / ${CAMPAIGN.length} 关 · ${mission.name}${mission.bosses.length ? ' · 首领战' : ''}`);
 }
 async function advanceLevel() {
   if (state.transitioning || !missionAt(state.level + 1)) return;
@@ -529,7 +572,7 @@ async function advanceLevel() {
   $('loading').hidden = false; $('loading').classList.remove('done'); $('loading-state').textContent = `正在前往${chapterAt(level).name}`; $('load-progress').value = 85;
   await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
   startLevel(level); await warmCombat();
-  state.transitioning = false; state.previous = 0; syncCombatClock(); renderDirty = true; $('loading').hidden = true; $('loading').classList.add('done'); $('view').focus({ preventScroll: true });
+  beginTravel(missionAt(level).chapterIndex);
 }
 async function deploy() {
   if (state.transitioning) return;
@@ -539,10 +582,42 @@ async function deploy() {
   state.score = state.combatSeconds = 0; state.result = null; state.weapon = 'pistol'; state.inventory = startingInventory(); state.grenades = 2;
   applyHero(); startLevel(1); resize();
   await warmCombat();
-  savePreferences(); state.transitioning = false; state.previous = 0; syncCombatClock(); renderDirty = true; frameSum = frameSample = 0; updateHud();
-  $('loading').classList.add('done'); $('loading').hidden = true; $('load-progress').value = 100; $('view').focus({ preventScroll: true });
+  savePreferences(); frameSum = frameSample = 0; beginTravel(0); $('load-progress').value = 100;
+}
+function beginTravel(index) {
+  state.transitioning = true; syncCombatClock(); clearInput(); travel.start(index, preferences.character);
+  document.body.classList.add('traveling'); $('travel-overlay').hidden = false;
+  $('travel-chapter').textContent = `战役 ${String(index + 1).padStart(2, '0')} / 06`;
+  $('travel-title').textContent = CHAPTERS[index].name;
+  $('travel-route').textContent = `${index * 5 + 1}${index < 5 ? ` - ${index * 5 + 5}` : ''} 关 · ${index ? '车队推进' : '乘艇登陆'}`;
+  $('loading').hidden = true; $('loading').classList.add('done'); $('crosshair').hidden = true; state.previous = 0; renderDirty = true;
+}
+function finishTravel() {
+  if (!travel?.active) return;
+  travel.stop(); document.body.classList.remove('traveling'); $('travel-overlay').hidden = true;
+  renderPass.scene = scene; renderPass.camera = camera; state.transitioning = false; clearInput(); followCamera(0, true);
+  state.previous = 0; state.spawnTimer = 2.1; syncCombatClock(); updateHud(); renderDirty = true; frameSum = frameSample = 0; $('view').focus({ preventScroll: true });
+}
+function renderTravel(dt) {
+  const running = !state.paused && !document.hidden && !state.settingsOpen;
+  if (!running && !renderDirty) return;
+  if (running) { travel.update(dt, viewport.width / viewport.height); battlefield.update(dt); }
+  if (travel.done) { finishTravel(); return; }
+  if (travel.panorama > 0) {
+    renderPass.scene = scene; renderPass.camera = camera;
+    const progress = travel.panorama, destination = playerPosition.clone(); destination.y = .5; if (battlefield.type === 'fuji') destination.z -= touchDevice ? 3 : 14;
+    cameraFocus.copy(battlefield.panoramaFocus).lerp(destination, progress);
+    camera.zoom = THREE.MathUtils.lerp(.28, battleZoom(), progress); camera.updateProjectionMatrix();
+    camera.position.copy(cameraFocus).add(cameraOffset); camera.lookAt(cameraFocus); camera.updateMatrixWorld();
+    sun.target.position.copy(cameraFocus); sun.position.copy(cameraFocus).add(sunOffset); sun.target.updateMatrixWorld();
+    hero.animate(travel.time, 0); silhouette.visible = false;
+    $('travel-route').textContent = `${CHAPTERS[travel.index].name} · 战场抵达`;
+  } else { renderPass.scene = travel.scene; renderPass.camera = travel.camera; }
+  $('travel-progress').value = travel.time / travel.duration;
+  composer.render(); renderDirty = false;
 }
 function setPause(value) {
+  if (!value && $('render-settings').matches(':popover-open')) $('render-settings').hidePopover();
   clearInput(); state.paused = value; syncCombatClock(); state.previous = 0; renderDirty = true; hudTimer = 0; $('pause-screen').hidden = !value;
   $('pause').innerHTML = `<i data-lucide="${value ? 'play' : 'pause'}"></i>`;
   $('pause').setAttribute('aria-label', value ? '继续' : '暂停'); $('pause').dataset.tooltip = value ? '继续' : '暂停'; iconize();
@@ -557,17 +632,29 @@ function updateHud() {
   $('grenade').disabled = !playing() || state.grenades === 0 || state.grenadeCooldown > 0;
   $('fire').disabled = !playing();
   for (const weapon of WEAPONS) { const slot = state.inventory[weapon.id]; $(`slot-${weapon.id}`).disabled = !playing() || !slot.owned || slot.ammo === 0; }
-  const boss = state.phase === 'playing' ? enemies.find(enemy => isBossType(enemy.type)) : null; $('boss-panel').hidden = !boss; document.body.classList.toggle('boss-active', Boolean(boss));
+  const bosses = state.phase === 'playing' ? enemies.filter(enemy => isBossType(enemy.type) && !enemy.downed) : [];
+  const boss = bosses.find(enemy => enemy.type === 'emperor') || bosses[0]; $('boss-panel').hidden = !boss; document.body.classList.toggle('boss-active', Boolean(boss));
   if (boss) {
     $('boss-name').textContent = boss.name;
     $('boss-health').textContent = `${Math.ceil(boss.health)} / ${boss.maxHealth}`; $('boss-health-bar').style.width = `${Math.max(0, boss.health / boss.maxHealth * 100)}%`;
-    $('boss-phase').textContent = boss.stagger > 0 ? '失衡' : boss.bossMode === 'recover' ? '破绽' : boss.bossMode === 'windup' ? {charge:'拔刀突进',cleave:'回旋斩',volley:'刀气齐射',arrows:'弓箭齐射'}[boss.bossAttack] : boss.bossMode === 'charge' ? '突进' : boss.enraged ? '狂怒' : '逼近';
+    $('boss-phase').textContent = boss.stagger > 0 ? '失衡' : boss.bossMode === 'recover' ? boss.type === 'officer' ? '换弹 · 破绽' : '破绽' : boss.bossMode === 'windup' ? {charge:'拔刀突进',cleave:'回旋斩',volley:'刀气齐射',arrows:'弓箭齐射',rifle:'举枪瞄准',blade:'军刀斩击'}[boss.bossAttack] : boss.bossMode === 'charge' ? '突进' : boss.bossMode === 'burst' ? '短连射' : boss.enraged ? '狂怒' : '逼近';
     $('boss-panel').classList.toggle('enraged', Boolean(boss.enraged)); $('boss-panel').classList.toggle('vulnerable', boss.stagger > 0 || boss.bossMode === 'recover');
+  }
+  const escorts = bosses.filter(enemy => enemy !== boss);
+  for (let i = 0; i < 2; i++) {
+    const row = $(`escort-${i}`), enemy = escorts[i]; row.hidden = !enemy;
+    if (enemy) { row.querySelector('span').textContent = `${enemy.name} ${i + 1}`; row.querySelector('progress').value = Math.max(0, enemy.health / enemy.maxHealth); }
+  }
+  const hazard = state.phase === 'playing' && !state.transitioning ? disasters.status(playerPosition) : null;
+  $('disaster-panel').hidden = !hazard;
+  if (hazard) {
+    $('disaster-title').textContent = hazard.title; $('disaster-status').textContent = hazard.detail; $('disaster-panel').classList.toggle('safe', hazard.safe);
+    $('disaster-arrow').style.transform = `rotate(${Math.atan2(disasters.center.x - playerPosition.x, playerPosition.z - disasters.center.z)}rad)`;
   }
   $('damage-overlay').classList.toggle('show', state.hurt > 0); $('fire').classList.toggle('active', fireInputs.size > 0 && playing());
   $('nuclear-support').hidden = !state.supportUnlocked || state.phase !== 'playing'; $('summon-nuclear').disabled = !playing();
   $('support-status').textContent = state.invulnerable > 0 ? `紧急保护 ${Math.ceil(state.invulnerable)} 秒` : '紧急支援已就绪';
-  $('configure').disabled = state.phase === 'ending' || state.phase === 'victory'; $('pause').disabled = state.phase === 'victory';
+  $('configure').disabled = state.transitioning || state.phase === 'ending' || state.phase === 'victory'; $('pause').disabled = state.phase === 'victory';
   document.querySelector('.status-label').textContent = { gameover: '失去战斗能力', clear: '区域安全', ending: '最终目标击破', victory: '战役胜利' }[state.phase] || '作战中';
 }
 function updateAimHud() {
@@ -575,18 +662,20 @@ function updateAimHud() {
   $('crosshair').style.transform = `translate(${(aimProjection.x * .5 + .5) * viewport.width}px,${(-aimProjection.y * .5 + .5) * viewport.height}px)`; $('crosshair').hidden = state.phase !== 'playing';
   $('crosshair').classList.toggle('hit', state.hitMarker > 0);
 }
+function battleZoom() { return battlefield.type === 'fuji' ? Math.min(1, viewport.span / 48) : 1; }
 function followCamera(dt, snap = false) {
   const blend = snap ? 1 : 1 - Math.exp(-dt * 9);
   const target = finale ? finale.focus : playerPosition, cameraBlend = finale ? 1 - Math.exp(-dt * 1.5) : blend;
-  cameraFocus.x += (target.x - cameraFocus.x) * cameraBlend; cameraFocus.z += (target.z - cameraFocus.z) * cameraBlend;
-  const zoom = finale ? Math.min(.78, viewport.span / Math.max(32, finale.extent.z * .8 + 20, finale.extent.x / (viewport.width / viewport.height) + 14)) : 1;
+  cameraFocus.x += (target.x - cameraFocus.x) * cameraBlend; cameraFocus.z += (target.z - (!finale && battlefield.type === 'fuji' ? touchDevice ? 3 : 14 : 0) - cameraFocus.z) * cameraBlend;
+  cameraFocus.y += ((finale ? finale.focus.y : .5) - cameraFocus.y) * cameraBlend;
+  const zoom = finale ? Math.min(.78, viewport.span / Math.max(32, finale.extent.z * .8 + 20, finale.extent.x / (viewport.width / viewport.height) + 14)) : battleZoom();
   if (Math.abs(camera.zoom - zoom) > .0001) { camera.zoom += (zoom - camera.zoom) * (snap ? 1 : 1 - Math.exp(-dt * 1.5)); camera.updateProjectionMatrix(); }
   effects.material.uniforms.height.value = viewport.height * renderer.getPixelRatio() / viewport.span * camera.zoom;
   camera.position.copy(cameraFocus).add(cameraOffset); camera.lookAt(cameraFocus); camera.updateMatrixWorld();
   sun.target.position.set(cameraFocus.x, 0, cameraFocus.z); sun.position.copy(sun.target.position).add(sunOffset); sun.target.updateMatrixWorld();
   const center = point(.85), distance = camera.position.distanceTo(center);
   raycaster.set(camera.position, center.sub(camera.position).normalize());
-  silhouette.visible = navigation.shotDistance(raycaster.ray, distance) < distance - .1;
+  silhouette.visible = navigation.shotDistance(raycaster.ray, distance) < distance - .1 || battlefield.occludesCamera(raycaster.ray, distance - .1);
   if (silhouette.visible) { hero.group.updateMatrixWorld(true); for (const [source, copy] of silhouetteParts) copy.matrix.copy(source.matrixWorld); }
 }
 function resize() {
@@ -610,6 +699,7 @@ function frame(timestamp) {
   requestAnimationFrame(frame);
   const elapsed = state.previous ? timestamp - state.previous : 16.67, dt = Math.min(.05, elapsed / 1000); state.previous = timestamp;
   syncCombatClock(timestamp);
+  if (travel?.active) { renderTravel(dt); return; }
   const running = active() && !['victory', 'gameover'].includes(state.phase);
   if ((!running && !renderDirty) || state.transitioning) return;
   if (running) {
@@ -623,6 +713,7 @@ function frame(timestamp) {
       if (state.phase === 'playing') updateGrenades(dt);
       if (state.phase === 'playing') bossCombat.updateShots(dt, playerPosition, navigation, takeDamage, state.skill > 0 && preferences.character === 'ranger' ? .32 : 1, state.level);
       if (state.phase === 'playing') updateSpawning(dt);
+      if (state.phase === 'playing') disasters.update(dt, { player: playerPosition, navigation, enemies, damageEnemy, takeDamage, battlefield, playing });
       if (state.phase === 'playing' || state.phase === 'clear') updatePickups(dt);
     } else if (state.phase === 'clear') {
       hero.animate(state.time, 0, 0, 1); updatePickups(dt); state.clearTimer -= dt; if (state.clearTimer <= 0) advanceLevel().catch(showDeployError);
@@ -636,12 +727,16 @@ function frame(timestamp) {
     if (state.ambientTimer <= 0) {
       state.ambientTimer = touchDevice ? .28 : .17;
       const ambientFocus = finale ? cameraFocus : playerPosition, ambientRange = 32 / camera.zoom;
+      if (battlefield.volcanoVent && battlefield.volcanoVent.distanceToSquared(ambientFocus) < ambientRange * ambientRange) {
+        effects.smoke(battlefield.volcanoVent, 2, '#899791', 1.3 + disasters.intensity * 1.8);
+        if (disasters.phase === 'active') effects.emit(battlefield.volcanoVent, 9, '#ffd17c', { speed: 2.8, up: 5, gravity: 3, life: 1.6, size: .16, energy: 2.5 });
+      }
       for (const fire of battlefield.fires) if (fire.distanceToSquared(ambientFocus) < ambientRange * ambientRange) { effects.flame(fire,.48,.33); effects.emit(fire, 2, '#f7b35d', { speed: .35, up: 2, gravity: -1, life: .65, size: .09 }); effects.smoke(fire, 1, '#85867b', .65); }
     }
   }
   effects.update(running ? dt : 0, 0, { strength: state.phase === 'playing' && state.invulnerable > 0 || state.phase === 'ending' && finale.nuclear ? .65 : 0, x: playerPosition.x, y: -.2, z: playerPosition.z, length: .4, width: .3 });
   effects.contacts(playerPosition, enemies); followCamera(running ? dt : 0); updateAimHud();
-  tacticalMap.update(playerPosition, facing, enemies, pickups, warnings, camera);
+  tacticalMap.update(playerPosition, facing, enemies, pickups, warnings, camera, disasters);
   hudTimer -= dt; if (hudTimer <= 0 || renderDirty) { if (!state.toast) $('toast').classList.remove('show'); updateHud(); hudTimer = .1; }
   composer.render(); renderDirty = false;
 }
@@ -653,7 +748,7 @@ function thumbnail(category, id) {
     thumbnailRenderer.setSize(400, 300); thumbnailRenderer.outputColorSpace = THREE.SRGBColorSpace; thumbnailRenderer.toneMapping = THREE.ACESFilmicToneMapping;
   }
   const stage = new THREE.Scene(); stage.background = new THREE.Color('#dce5dd'); stage.environment = assets.environment; stage.environmentIntensity = .7;
-  const light = new THREE.DirectionalLight('#fff0d3', 3); light.position.set(-3, 6, 5); stage.add(light, new THREE.HemisphereLight('#f2fbff', '#5e6d5a', 1.8));
+  const light = new THREE.DirectionalLight('#fff4e4', 3.1); light.position.set(-3, 6, 5); stage.add(light, new THREE.HemisphereLight('#dfebf3', '#676d65', .9));
   const cam = new THREE.PerspectiveCamera(34, 4 / 3, .1, 200); let model;
   if (category === 'character') { model = createHero(id).group; cam.position.set(1.35, 2.15, 5.6); cam.lookAt(0, 1.12, 0); }
   else if (category === 'weapon') { model = createGun(id); model.rotation.z = -.18; cam.position.set(2.15, 1.5, 2.2); cam.lookAt(0, 0, .32); }
@@ -695,9 +790,12 @@ function bindHold(button, start, stop) {
 function bind() {
   leaderboard = new Leaderboard($('leaderboard'));
   const route = document.querySelector('.campaign-route');
-  CHAPTERS.forEach((chapter, index) => { const item = document.createElement('li'), name = document.createElement('span'), range = document.createElement('small'); name.textContent = chapter.name; range.textContent = index === 5 ? '16' : `${index * 3 + 1} - ${index * 3 + 3}`; item.append(name, range); route.appendChild(item); });
+  CHAPTERS.forEach((chapter, index) => { const item = document.createElement('li'), name = document.createElement('span'), range = document.createElement('small'); name.textContent = chapter.name; range.textContent = index === 5 ? '26' : `${index * 5 + 1} - ${index * 5 + 5}`; item.append(name, range); route.appendChild(item); });
+  $('skip-travel').addEventListener('click', finishTravel);
   releaseFire = bindHold($('fire'), () => { if (playing()) { fireInputs.add('touch'); fire(); } }, () => fireInputs.delete('touch'));
   if (touchDevice) {
+    $('pause-tools').append($('configure'), $('graphics'), $('sound'));
+    $('pause-tools').hidden = false;
     joystick = new TouchJoystick($('touch-joystick'), playing);
     $('game').setAttribute('aria-label', '老美大战倭寇。左下摇杆控制移动与朝向，按住右下射击按钮连射，点击武器栏切换武器，点击手雷、闪避和技能按钮使用道具与能力。');
     document.querySelector('.combat-controls').addEventListener('contextmenu', event => event.preventDefault());
@@ -726,6 +824,7 @@ function bind() {
   }
   window.addEventListener('keydown', event => {
     if ($('garage').open || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
+    if (travel?.active && event.code === 'Enter' && !event.repeat) { event.preventDefault(); finishTravel(); return; }
     if (event.code === 'Escape' || event.code === 'KeyP') { if (!event.repeat && state.ready && !['victory', 'gameover'].includes(state.phase)) setPause(!state.paused); return; }
     if (!playing()) return;
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(event.code)) event.preventDefault();
@@ -751,29 +850,33 @@ function bind() {
 }
 async function initialize() {
   iconize(); renderer = new THREE.WebGLRenderer({ canvas: $('view'), antialias: false, powerPreference: 'high-performance' });
-  renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.08;
+  renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.04;
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   scene = new THREE.Scene(); scene.add(silhouette); camera = new THREE.OrthographicCamera(-18, 18, 12, -12, .1, 260); camera.position.set(0, 24, 34); camera.lookAt(0, .5, 0); camera.updateMatrixWorld();
   assets = await loadAssets(value => $('load-progress').value = value);
   const pmrem = new THREE.PMREMGenerator(renderer); scene.environment = pmrem.fromEquirectangular(assets.environment).texture; scene.environmentIntensity = .65; pmrem.dispose();
-  sun = new THREE.DirectionalLight('#fff2d8', 3.2); sun.position.set(-16, 28, 16); sun.castShadow = true; sun.shadow.mapSize.set(2048,2048); sun.shadow.bias = -.0002; sun.shadow.normalBias = .035;
-  Object.assign(sun.shadow.camera, { left: -27, right: 27, top: 27, bottom: -27, near: 1, far: 90 }); scene.add(sun, sun.target, new THREE.HemisphereLight('#dff0ff', '#777b65', 1.2));
-  const rim = new THREE.DirectionalLight('#bfdcd9', 1.1); rim.position.set(8, 8, -12); scene.add(rim);
-  composer = new EffectComposer(renderer); composer.addPass(new RenderPass(scene, camera));
+  sun = new THREE.DirectionalLight('#fff2d8', 3.1); sun.position.copy(sunOffset); sun.castShadow = true; sun.shadow.mapSize.set(2048,2048); sun.shadow.bias = -.00015; sun.shadow.normalBias = .035;
+  skyLight = new THREE.HemisphereLight('#dfebf3', '#777b70', .75);
+  Object.assign(sun.shadow.camera, { left: -29, right: 29, top: 29, bottom: -29, near: 1, far: 100 }); scene.add(sun, sun.target, skyLight);
+  const rim = new THREE.DirectionalLight('#d1e4f1', .4); rim.position.set(8, 8, -12); scene.add(rim);
+  composer = new EffectComposer(renderer); renderPass = new RenderPass(scene, camera); composer.addPass(renderPass);
   bloom = new UnrealBloomPass(new THREE.Vector2(900, 600), .28, .45, 1.25); composer.addPass(bloom); composer.addPass(new OutputPass()); smaa = new SMAAPass(); composer.addPass(smaa);
   effects = new Effects(scene, camera, touchDevice ? .6 : 1); resize(); physics = new CombatPhysics(); bossCombat = new BossCombat(scene, effects); tacticalMap = new TacticalMap($('tactical-map'), $('district-name'), $('map-position'));
+  disasters = new Disasters(scene, effects); travel = new TravelSequence(assets); travel.scene.environment = scene.environment;
+  await renderer.compileAsync(travel.scene, travel.camera);
   for (const item of HEROES) thumbnail('character', item.id);
   bind(); state.ready = true; await deploy(); $('load-progress').value = 100;
   requestAnimationFrame(frame);
 }
 async function warmCombat() {
-  const stage = new THREE.Group(), models = ['raider', 'heavy', 'boss', 'emperor'].map(createEnemy), items = [...WEAPONS.map(weapon => createPickup(weapon.id)), createPickup('grenade')];
+  const stage = new THREE.Group(), models = ['raider', 'heavy', 'soldier', 'boss', 'officer', 'emperor'].map(createEnemy), items = [...WEAPONS.map(weapon => createPickup(weapon.id)), createPickup('grenade')];
   models.forEach((model, i) => { model.group.position.set(-3 + i * 3, 0, -4); stage.add(model.group); });
   items.forEach((item, i) => { item.position.set(-3 + i * 2, 0, 3); stage.add(item); });
   stage.position.copy(playerPosition); scene.add(stage);
   effects.arc(point(1), heroInfo().color, 1.4, 0); effects.shield.visible = true;
+  disasters.surface.visible = disasters.crest.visible = true; disasters.surface.material.uniforms.strength.value = 0;
   try { await renderer.compileAsync(scene, camera); composer.render(); }
-  finally { models.forEach(releaseEnemy); items.forEach(disposeModel); stage.removeFromParent(); effects.clear(); effects.shield.visible = false; }
+  finally { models.forEach(releaseEnemy); items.forEach(disposeModel); stage.removeFromParent(); effects.clear(); effects.shield.visible = false; disasters.surface.visible = disasters.crest.visible = false; }
 }
 function showDeployError(error) {
   console.error(error); $('loading-state').textContent = '战场加载失败'; const retry = document.createElement('button'); retry.className = 'depart'; retry.textContent = '重新加载'; retry.addEventListener('click', () => location.reload()); $('loading-state').after(retry);

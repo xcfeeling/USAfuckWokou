@@ -16,9 +16,10 @@ export function createBossModel(type = 'emperor') {
     ctx.beginPath(); ctx.arc(cx, y, 2.2, 0, Math.PI * 2); ctx.stroke();
   }
   const brocade = new THREE.CanvasTexture(fabric); brocade.colorSpace = THREE.SRGBColorSpace; brocade.wrapS = brocade.wrapT = THREE.RepeatWrapping; brocade.repeat.set(2, 2);
-  const robe = mat(emperor ? '#eee9df' : '#bd9b92', { ...surfaceMaps('cloth'), map: brocade, bumpScale: .015 });
-  const fold = mat(emperor ? '#c8c5b7' : '#353f42', { ...surfaceMaps('cloth'), bumpScale: .015 }), lining = mat('#b92d35', { ...surfaceMaps('cloth'), bumpScale: .016 });
-  const skin = mat('#ead6b5'), black = mat('#202522'), gold = mat('#b19852', { metalness: .72, roughness: .35 }), steel = mat('#cfd9d5', { metalness: .9, roughness: .24 });
+  const robe = mat(emperor ? '#e3e0d5' : '#b49c92', { ...surfaceMaps('cloth'), map: brocade, roughness: .88, bumpScale: .009 });
+  const fold = mat(emperor ? '#bcbeb3' : '#353f42', { ...surfaceMaps('cloth'), bumpScale: .009 }), lining = mat('#983f41', { ...surfaceMaps('cloth'), bumpScale: .009 });
+  const skin = mat('#d1b498', { ...surfaceMaps('skin'), bumpScale: .003 }), black = mat('#242927', { ...surfaceMaps('leather'), bumpScale: .006 });
+  const gold = mat('#b19852', { ...surfaceMaps('metal'), metalness: .72, roughness: .4, bumpScale: .005 }), steel = mat('#cfd9d5', { ...surfaceMaps('metal'), metalness: .9, roughness: .28, bumpScale: .004 });
   function add(parent, geometry, material, position = [0, 0, 0]) { const mesh = new THREE.Mesh(geometry, material); mesh.position.set(...position); mesh.castShadow = mesh.receiveShadow = true; mesh.userData.ownedMaterial = true; parent.add(mesh); return mesh; }
   function oval(parent, material, scale, position) { const mesh = add(parent, new THREE.SphereGeometry(1, 28, 18), material, position); mesh.scale.set(...scale); return mesh; }
   function box(parent, material, size, position, radius = .035) { return add(parent, Math.min(...size) < .035 ? new THREE.BoxGeometry(...size) : new RoundedBoxGeometry(...size, 1, radius), material, position); }
@@ -60,17 +61,21 @@ export function createBossModel(type = 'emperor') {
     tail = add(head, new THREE.ExtrudeGeometry(ribbon, { depth: .035, bevelEnabled: true, bevelSize: .009, bevelThickness: .007, bevelSegments: 1 }), black, [-.018, 0, -.08]); tail.rotation.y = .18;
     tail.userData.animated = true;
   } else {
-    const armor = mat('#3b494c', { ...surfaceMaps('metal'), metalness: .7 });
+    const armor = mat('#3b494c', { ...surfaceMaps('metal'), metalness: .7, roughness: .53, bumpScale: .006 });
     oval(head, armor, [.48, .30, .43], [0, .35, -.02]);
     box(head, gold, [.99, .065, .15], [0, .36, .34]);
     for (const s of [-1, 1]) {
       cord(head, gold, [[s * .12, .51, .26], [s * .46, .70, .2], [s * .54, 1.01, .06]], .047);
-      for (let i = 0; i < 3; i++) box(head, armor, [.23, .14, .57], [s * .43, .18 - i * .14, -.07]);
+      for (let i = 0; i < 3; i++) {
+        box(head, armor, [.23, .14, .57], [s * .43, .18 - i * .14, -.07]);
+        oval(head, gold, [.019, .019, .012], [s * .43, .18 - i * .14, .225]);
+      }
       for (let i = 0; i < 3; i++) box(sleeves[s === -1 ? 0 : 1], armor, [.64, .16, .72], [s * .29, .13 - i * .17, .03]);
     }
     for (let i = 0; i < 4; i++) {
       box(torso, armor, [1.05, .15, .10], [0, 1.56 - i * .17, .37]);
       for (const s of [-1, 1]) box(torso, gold, [.035, .15, .025], [s * .3, 1.56 - i * .17, .436]);
+      box(torso, gold, [1.0, .017, .018], [0, 1.49 - i * .17, .431]);
     }
   }
   const sword = new THREE.Group(); sleeves[1].add(sword); sword.position.set(.81, -.09, .17);

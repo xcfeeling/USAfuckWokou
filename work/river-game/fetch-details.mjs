@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 const output = resolve('../../outputs/cloudflare-pages/assets');
 const decoder = new TextDecoder('utf-8', { fatal: true });
 const sources = JSON.parse(decoder.decode(await readFile(resolve(output, 'sources.json'))));
-for (const [id, maps] of [['island_tree_02', ['leaves_diff', 'leaves_alpha', 'leaves_nor_gl']], ['concrete_wall_007', ['Diffuse', 'nor_gl']]]) {
+for (const [id, maps] of [['island_tree_02', ['leaves_diff', 'leaves_alpha', 'leaves_nor_gl']], ['concrete_wall_007', ['Diffuse', 'nor_gl']], ['coast_sand_01', ['Diffuse', 'nor_gl']], ['brown_mud_dry', ['Diffuse', 'nor_gl']], ['rock_boulder_dry', ['Diffuse', 'nor_gl']]]) {
   const response = await fetch(`https://api.polyhaven.com/files/${id}`);
   if (!response.ok) throw new Error(`${id}: ${response.status}`);
   const manifest = JSON.parse(decoder.decode(await response.arrayBuffer()));
